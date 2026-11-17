@@ -68,8 +68,14 @@ export function Palette() {
                 value={q}
                 onChange={(e) => (setQ(e.target.value), setI(0))}
                 onKeyDown={(e) => {
-                  if (e.key === "ArrowDown") (e.preventDefault(), setI((x) => Math.min(items.length - 1, x + 1)));
-                  if (e.key === "ArrowUp") (e.preventDefault(), setI((x) => Math.max(0, x - 1)));
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setI((x) => Math.min(items.length - 1, x + 1));
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setI((x) => Math.max(0, x - 1));
+                  }
                   if (e.key === "Enter" && items[i]) run(items[i], e.shiftKey);
                 }}
                 placeholder="Search Verses, live markets, events…"

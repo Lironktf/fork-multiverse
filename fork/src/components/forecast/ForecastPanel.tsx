@@ -361,7 +361,7 @@ export function ForecastPanel() {
   const f = forecastFor({ forecasts, forecastIndex }, currentVerseId, target);
   const verse = verses[currentVerseId];
   const parentF = verse.parentId ? forecastFor({ forecasts, forecastIndex }, verse.parentId, target) : null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   const baseline = baselineFor(target, engineMode);
   const isOrigin = currentVerseId === ORIGIN_ID;
   const analyzing = f && !isTerminal(f);

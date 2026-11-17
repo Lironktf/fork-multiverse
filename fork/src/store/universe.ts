@@ -193,7 +193,12 @@ export const useUniverse = create<UniverseState>()(
           let grew = true;
           while (grew) {
             grew = false;
-            for (const v of Object.values(s.verses)) if (v.parentId && doomed.has(v.parentId) && !doomed.has(v.id)) (doomed.add(v.id), (grew = true));
+            for (const v of Object.values(s.verses)) {
+              if (v.parentId && doomed.has(v.parentId) && !doomed.has(v.id)) {
+                doomed.add(v.id);
+                grew = true;
+              }
+            }
           }
           const verses = Object.fromEntries(Object.entries(s.verses).filter(([k]) => !doomed.has(k)));
           const forecastIndex = Object.fromEntries(Object.entries(s.forecastIndex).filter(([k]) => !doomed.has(k)));

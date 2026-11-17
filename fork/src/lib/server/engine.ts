@@ -22,7 +22,6 @@ import {
   type Forecast,
   type ForkEvent,
   type ModelRole,
-  type ModelRun,
   type NextForkSuggestion,
   type SourceRef,
 } from "@/lib/domain/types";

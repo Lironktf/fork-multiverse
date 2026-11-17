@@ -113,21 +113,20 @@ export function navigateTo(verseId: string) {
   if (!v) return;
   s.setCurrentVerse(verseId);
   ui.set({ selectedNode: null, inspectRole: null, disagreementOpen: false, announce: `Entered ${v.name}, generation ${v.visualMetadata.generation}.` });
-  engine.travelTo({ x: v.visualMetadata.x, y: v.visualMetadata.y });
+  engine.travelTo({ x: v.visualMetadata.x, y: v.visualMetadata.y }, fitConstellationK());
 }
 
 export function focusCurrent(k?: number) {
   const s = useUniverse.getState();
   const v = s.verses[s.currentVerseId];
-  engine.flyTo(v.visualMetadata.x, v.visualMetadata.y, k ?? fitConstellationK(), 800);
+  engine.focusOn(v.visualMetadata.x, v.visualMetadata.y, k ?? fitConstellationK(), 800);
 }
 
 export function fitConstellationK() {
   if (typeof window === "undefined") return 1;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  // constellation spans ~1000×860 world units; leave room for HUD
-  return Math.max(0.35, Math.min(1.05, Math.min((w - 120) / 1150, (h - 150) / 960)));
+  const { w, h } = engine.safeSize();
+  // the constellation spans ~1150×900 world units (outer event ring included)
+  return Math.max(0.3, Math.min(1.05, Math.min(w / 1180, h / 900)));
 }
 
 /* ---------------- forking ---------------- */

@@ -48,7 +48,7 @@ async function getJson<T>(path: string): Promise<{ value: T; fetchedAt: number; 
   // stale-while-revalidate: serve a recent copy (its true fetch time is reported) and refresh behind it
   if (hit && Date.now() - hit.at < 600_000 && !inflight.has(path)) {
     cache.set(path, { ...hit, at: hit.at }); // keep original timestamp
-    void refresh<T>(path, hit).catch(() => {});
+    void refresh(path, hit).catch(() => {});
     return { value: hit.value as T, fetchedAt: hit.at, cached: true };
   }
   if (inflight.has(path)) {
@@ -56,12 +56,12 @@ async function getJson<T>(path: string): Promise<{ value: T; fetchedAt: number; 
     const h = cache.get(path)!;
     return { value: h.value as T, fetchedAt: h.at, cached: true };
   }
-  await refresh<T>(path, hit);
+  await refresh(path, hit);
   const h = cache.get(path) ?? hit!;
   return { value: h.value as T, fetchedAt: h.at, cached: false };
 }
 
-async function refresh<T>(path: string, hit: Cached | undefined): Promise<void> {
+async function refresh(path: string, hit: Cached | undefined): Promise<void> {
   const p = (async () => {
     await throttle();
     const ctrl = new AbortController();

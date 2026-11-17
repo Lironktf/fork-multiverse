@@ -55,7 +55,10 @@ export function DragLayer() {
     sx.jump(drag.origin.x);
     sy.jump(drag.origin.y);
     scale.set(1.04);
-    if (pending) (x.set(pending.x), y.set(pending.y));
+    if (pending) {
+      x.set(pending.x);
+      y.set(pending.y);
+    }
     document.body.style.cursor = "grabbing";
 
     const onMove = (e: PointerEvent) => {

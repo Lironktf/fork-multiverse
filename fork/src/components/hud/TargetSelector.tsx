@@ -65,8 +65,14 @@ export function TargetPicker({ onPicked, autoFocus = true }: { onPicked?: () => 
             setActive(0);
           }}
           onKeyDown={(e) => {
-            if (e.key === "ArrowDown") (e.preventDefault(), setActive((a) => Math.min(items.length - 1, a + 1)));
-            if (e.key === "ArrowUp") (e.preventDefault(), setActive((a) => Math.max(0, a - 1)));
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setActive((a) => Math.min(items.length - 1, a + 1));
+            }
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setActive((a) => Math.max(0, a - 1));
+            }
             if (e.key === "Enter" && items[active]) pick(items[active]);
           }}
           placeholder="Search a market or event to forecast…"

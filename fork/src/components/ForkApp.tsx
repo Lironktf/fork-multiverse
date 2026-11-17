@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronsRight, Compass, Layers, ShoppingBasket } from "lucide-react";
@@ -22,7 +22,7 @@ import { Welcome } from "@/components/Welcome";
 import { useUniverse } from "@/store/universe";
 import { useUI, prefersReducedMotion } from "@/store/ui";
 import { engine } from "@/lib/client/runtime";
-import { pollForecasts } from "@/lib/client/actions";
+import { focusCurrent, pollForecasts } from "@/lib/client/actions";
 
 function useHydrated() {
   const [h, setH] = useState(false);
@@ -35,7 +35,9 @@ function useHydrated() {
 }
 
 function useMedia(q: string) {
-  const [m, setM] = useState(false);
+  // initialise synchronously: the workspace mounts client-side only (after hydration gating),
+  // and the first camera framing depends on the correct breakpoint
+  const [m, setM] = useState(() => typeof window !== "undefined" && window.matchMedia(q).matches);
   useEffect(() => {
     const mq = window.matchMedia(q);
     setM(mq.matches);
@@ -132,6 +134,25 @@ function Workspace() {
   useEffect(() => {
     if (tablet && !desktop) setDiscovery(false);
   }, [tablet, desktop]);
+
+  // tell the camera which parts of the screen the HUD covers, so framing centres in the open space
+  const firstFrame = useRef(true);
+  useEffect(() => {
+    const apply = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      engine.insets = tablet
+        ? { l: discovery && desktop ? Math.min(316, w * 0.3) + 24 : 24, r: Math.min(352, w * (desktop ? 0.34 : 0.4)) + 24, t: desktop ? 60 : 140, b: 76 }
+        : { l: 0, r: 0, t: 150, b: h * 0.5 };
+    };
+    apply();
+    if (firstFrame.current) {
+      firstFrame.current = false;
+      if (useUI.getState().forkPhase === "idle") focusCurrent();
+    }
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [tablet, desktop, discovery]);
 
   return (
     <>

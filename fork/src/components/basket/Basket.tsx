@@ -166,9 +166,10 @@ export function Basket({ compact = false }: { compact?: boolean }) {
   const conflictedIds = new Set(conflicts.flatMap((c) => c.eventIds));
 
   useEffect(() => {
-    dom.basket = ref.current;
+    const el = ref.current;
+    dom.basket = el;
     return () => {
-      if (dom.basket === ref.current) dom.basket = null;
+      if (dom.basket === el) dom.basket = null;
     };
   }, []);
 

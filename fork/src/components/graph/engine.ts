@@ -293,6 +293,21 @@ export class GraphEngine {
     this.inertia = { vx: 0, vy: 0 };
   }
 
+  /** Screen space covered by HUD panels; framing keeps content inside the remaining window. */
+  insets = { l: 0, r: 0, t: 0, b: 0 };
+
+  safeSize() {
+    return { w: Math.max(200, this.w - this.insets.l - this.insets.r), h: Math.max(200, this.h - this.insets.t - this.insets.b) };
+  }
+
+  /** Fly so that world point (x, y) sits at the centre of the safe area. */
+  focusOn(x: number, y: number, k: number, dur = 900) {
+    k = Math.max(0.15, Math.min(2.6, k));
+    const dx = (this.insets.l - this.insets.r) / 2;
+    const dy = (this.insets.t - this.insets.b) / 2;
+    this.flyTo(x - dx / k, y - dy / k, k, dur);
+  }
+
   fitTo(points: { x: number; y: number }[], pad = 160, maxK = 1.15, dur = 900) {
     if (!points.length) return;
     const xs = points.map((p) => p.x);
@@ -301,12 +316,41 @@ export class GraphEngine {
       maxX = Math.max(...xs) + pad,
       minY = Math.min(...ys) - pad,
       maxY = Math.max(...ys) + pad;
-    const k = Math.min(maxK, this.w / (maxX - minX), this.h / (maxY - minY));
-    this.flyTo((minX + maxX) / 2, (minY + maxY) / 2, k, dur);
+    const safe = this.safeSize();
+    const k = Math.min(maxK, safe.w / (maxX - minX), safe.h / (maxY - minY));
+    this.focusOn((minX + maxX) / 2, (minY + maxY) / 2, k, dur);
   }
 
   fitAll(dur = 900) {
-    this.fitTo([...this.nodes.values()].map((n) => ({ x: n.ax, y: n.ay })), 140, 1.1, dur);
+    this.fitTo([...this.nodes.values()].map((n) => ({ x: n.ax, y: n.ay })), 300, 1.1, dur);
+  }
+
+  /* ---------------- edge picking (hover to inspect a relationship) ---------------- */
+  onEdgeHover?: (e: EdgeSpec | null, x: number, y: number) => void;
+  hoverEdge: string | null = null;
+
+  pickEdge(clientX: number, clientY: number): EdgeSpec | null {
+    const rect = this.root?.getBoundingClientRect();
+    if (!rect) return null;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    let best: EdgeSpec | null = null;
+    let bestD = 7; // px tolerance
+    for (const e of this.edges) {
+      const g = this.edgeGeom(e);
+      if (!g) continue;
+      for (let i = 0; i <= 16; i++) {
+        const u = g.ta + ((g.tb - g.ta) * i) / 16;
+        const px = (1 - u) * (1 - u) * g.p0.x + 2 * (1 - u) * u * g.cx + u * u * g.p1.x;
+        const py = (1 - u) * (1 - u) * g.p0.y + 2 * (1 - u) * u * g.cy + u * u * g.p1.y;
+        const d = Math.hypot(px - x, py - y);
+        if (d < bestD) {
+          bestD = d;
+          best = e;
+        }
+      }
+    }
+    return best;
   }
 
   zoomBy(f: number, sx?: number, sy?: number) {
@@ -357,6 +401,17 @@ export class GraphEngine {
   private downAt = { x: 0, y: 0 };
 
   handlePointerMove = (e: PointerEvent) => {
+    if (!this.dragging && !this.panning && !this.busy && (e.target === this.canvas || e.target === this.root)) {
+      const hit = this.pickEdge(e.clientX, e.clientY);
+      const id = hit?.id ?? null;
+      if (id !== this.hoverEdge || hit) {
+        this.hoverEdge = id;
+        this.onEdgeHover?.(hit, e.clientX, e.clientY);
+      }
+    } else if (this.hoverEdge) {
+      this.hoverEdge = null;
+      this.onEdgeHover?.(null, 0, 0);
+    }
     if (this.dragging) {
       const d = this.dragging;
       if (!d.moved && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) < 5) return;
@@ -534,7 +589,10 @@ export class GraphEngine {
     const now = performance.now();
     const age = now - n.born - n.stagger;
     const appear = this.reduced ? 1 : easeOut(clamp01(age / 650));
-    const s = 0.55 + 0.45 * appear;
+    // semantic zoom: Verse landmarks (and the target) stay legible when the camera pulls back
+    const k = this.cam.k;
+    const keep = n.type === "verse" ? Math.min(3.6, Math.max(1, 0.85 / k)) : n.type === "target" ? Math.min(1.8, Math.max(1, 0.55 / k)) : 1;
+    const s = (0.55 + 0.45 * appear) * keep;
     const tr = `translate3d(${n.rx.toFixed(2)}px, ${n.ry.toFixed(2)}px, 0) scale(${s.toFixed(3)})`;
     if (tr !== n.lastT) {
       el.style.transform = tr;
@@ -732,6 +790,10 @@ export class GraphEngine {
       const born = Math.max(g.a.born + g.a.stagger, g.b.born + g.b.stagger);
       const grow = this.reduced ? 1 : easeOut(clamp01((performance.now() - born) / 700));
       if (grow <= 0) continue;
+      if (this.hoverEdge === e.id) {
+        alpha = Math.min(1, alpha * 2.6);
+        w += 0.8;
+      }
       if (this.convergeSet.has(e.from) || this.convergeSet.has(e.to)) alpha = Math.min(1, alpha * (1 + this.fx.converge * 1.6));
       ctx.strokeStyle = rgba(st.c, Math.min(1, alpha));
       ctx.lineWidth = w;
@@ -805,7 +867,7 @@ export class GraphEngine {
         await this.tween(160, () => {});
         await this.tween(220, (p) => (fx.worldFade = 1 - p));
         c.onPhase("travel");
-        this.cam = { x: c.to.x, y: c.to.y, k: this.cam.k };
+        this.cam = { x: c.to.x - (this.insets.l - this.insets.r) / 2 / this.cam.k, y: c.to.y - (this.insets.t - this.insets.b) / 2 / this.cam.k, k: this.cam.k };
         this.camTarget = { ...this.cam };
         this.flight = null;
         c.onPhase("arrive");
@@ -817,7 +879,7 @@ export class GraphEngine {
       // Phase 1 — commitment: pulses travel the assumption edges, target answers
       c.onPhase("commit");
       for (const id of c.converge) this.pulseEdgesOf(id, 3);
-      this.flyTo(c.from.x, c.from.y, Math.max(0.8, Math.min(1.15, k0)), 480);
+      this.focusOn(c.from.x, c.from.y, k0, 480);
       await this.tween(520, () => {});
       // Phase 2 — convergence: assumptions are drawn into the target; tension builds
       c.onPhase("converge");
@@ -844,7 +906,9 @@ export class GraphEngine {
       this.convergeSet.clear();
       // Phase 4 — travel: through the branching paths to the new focal point
       c.onPhase("travel");
-      this.cam = { x: c.to.x, y: c.to.y, k: kc };
+      const dxi = (this.insets.l - this.insets.r) / 2;
+      const dyi = (this.insets.t - this.insets.b) / 2;
+      this.cam = { x: c.to.x - dxi / kc, y: c.to.y - dyi / kc, k: kc };
       this.camTarget = { ...this.cam };
       this.focusCluster = c.to;
       await this.tween(1050, (p) => {
@@ -865,7 +929,7 @@ export class GraphEngine {
         fx.dimStars = 0.6 * (1 - e);
         this.ambient = e;
       });
-      this.flyTo(c.to.x, c.to.y, Math.max(0.75, Math.min(1.05, k0)), 600);
+      this.focusOn(c.to.x, c.to.y, k0, 600);
       c.onPhase("reveal");
     } finally {
       Object.assign(fx, { converge: 0, flash: 0, warp: 0, shake: 0, worldFade: 1, worldScale: 1, travel: 0, branch: 0, dimStars: 0 });
@@ -876,12 +940,8 @@ export class GraphEngine {
   }
 
   /** Lighter transition used for ordinary navigation between existing Verses. */
-  async travelTo(to: { x: number; y: number }, k?: number) {
+  async travelTo(to: { x: number; y: number }, k: number) {
     this.focusCluster = to;
-    if (this.reduced) {
-      this.flyTo(to.x, to.y, k ?? this.cam.k, 1);
-      return;
-    }
-    this.flyTo(to.x, to.y, k ?? Math.max(0.75, Math.min(1.05, this.cam.k)), 1100);
+    this.focusOn(to.x, to.y, k, this.reduced ? 1 : 1100);
   }
 }

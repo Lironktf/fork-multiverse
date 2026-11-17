@@ -158,6 +158,17 @@ export function GraphView() {
     window.addEventListener("pointercancel", engine.handlePointerUp);
 
     engine.onBackgroundClick = () => useUI.getState().set({ selectedNode: null });
+    engine.onEdgeHover = (edge, x, y) => {
+      const tip = edgeTipRef.current;
+      if (!tip) return;
+      if (!edge?.label) {
+        tip.style.opacity = "0";
+        return;
+      }
+      tip.textContent = edge.label;
+      tip.style.opacity = "1";
+      tip.style.transform = `translate3d(${x + 14}px, ${y + 12}px, 0)`;
+    };
     engine.onNodeDragMove = (_id, x, y) => {
       const p = basketProximity(x, y);
       const meta = modelRef.current.meta.get(_id);
@@ -197,6 +208,7 @@ export function GraphView() {
     };
   }, []);
 
+  const edgeTipRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef(model);
   modelRef.current = model;
 
@@ -232,7 +244,12 @@ export function GraphView() {
       onKeyDown={onKeyDown}
       data-zoom="near"
     >
-      <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" aria-hidden />
+      <canvas ref={canvasRef} className="absolute inset-0" aria-hidden />
+      <div
+        ref={edgeTipRef}
+        role="tooltip"
+        className="pointer-events-none fixed left-0 top-0 z-30 rounded-[5px] border border-line-2 bg-[#0e0e11] px-2 py-1 text-[10.5px] text-ink-2 opacity-0 transition-opacity duration-150"
+      />
       <div ref={worldRef} className="graph-world">
         {model.nodes.map((n) => (
           <GraphNode

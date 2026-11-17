@@ -23,3 +23,6 @@ export function basketProximity(x: number, y: number): { inside: boolean; hot: n
 let lastDragEnd = 0;
 export const markDragEnd = () => (lastDragEnd = performance.now());
 export const justDragged = () => performance.now() - lastDragEnd < 120;
+
+// debugging / e2e hook (development only)
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") (window as unknown as { __forkEngine: unknown }).__forkEngine = engine;
