@@ -183,10 +183,13 @@ Icons: **Lucide** (ISC). See [NOTICES.md](NOTICES.md).
 
 ## Test results
 
-Run on 2026-11-17, headless Chromium 1243. Results were identical against `next dev` and the production build (`next build && next start`):
+### Automated suite (`npm test`)
+
+Run on 2026-11-17 with headless Chromium 1243. Results were identical against
+`next dev` and the production build:
 
 ```
-15 passed (59.4s)
+15 passed
   e2e  1–2   loads, welcome renders, target search finds events
   e2e  3–18  basket (click-add, drag-add, outcome change, remove, undo), fork with
              rapid re-click (exactly one child created), naming, deeper fork with
@@ -200,11 +203,49 @@ Run on 2026-11-17, headless Chromium 1243. Results were identical against `next 
              one-sided, Verse placement/ancestry/inheritance
 ```
 
-Also verified manually:
+### Full feature verification (scripted browser walkthrough with screenshots)
 
-- **Live `claude -p` engine:** `/api/forecast` returned research with 6 cited sources and 4 valid analyst outputs (ensemble 13% for BTC > $150k by Dec 2027 given Fed cuts and no recession). In the UI, Markets mode on Gemini `RECESSION26` gave 1% vs the market's 4%, with cited research sources (BEA, Reuters and others). The first attempt surfaced a CLI schema error; the UI showed "All analysts failed" with no number, as designed.
-- **Production build:** `next build` succeeds; eslint is clean; `tsc` is clean.
-- **Frame rate:** ~20 fps in *software-rendered* headless Chromium (SwiftShader, no GPU) on a 4-core server. That isn't representative of a laptop GPU, and 60 fps was **not measured** on real hardware.
+All 22 demo-engine steps pass, plus the live-model steps. No console or runtime
+errors were recorded:
+
+- welcome with live Gemini examples
+- categorical live market as target (outcome picker)
+- Markets mode order book
+- discovery categories, source tabs and empty state
+- custom event creation
+- add with an explicit outcome
+- mutually-exclusive conflict warning and acknowledgement
+- undo / redo / draft save / clear / restore
+- full fork choreography and naming via a suggestion chip
+- hover tooltip, Verse popover, keyboard fit/focus
+- node drag and spring return
+- edge hover naming the relationship
+- analyst inspector, disagreement view, *fork both* (two tagged siblings)
+- next-fork ranking and adding a suggestion as a pending graph node
+- compare
+- Universe tree rename and subtree delete
+- ⌘K palette (target switch, so the next forecast isn't reused)
+- settings, wallet popover (no extension) and the onchain guard
+- reload persistence and the universe overview
+- mobile sheets plus a full fork on 390×844
+
+### Live models (real CLI runs)
+
+| Mode | Scenario | Result |
+| --- | --- | --- |
+| Claude only | BTC > $150k by Dec 2027 · Fed cuts 100bp YES · recession NO | 12–15% (4 analysts), 6 cited sources |
+| Codex only | same | 44–48% (4 analysts, `gpt-6-astra` via `codex exec`) |
+| Mixed | same | Claude A/C 13–17% vs Codex B/D 43–48%. Significant disagreement → revision round (each held) → ensemble 30.5% |
+| Mixed (UI) | US AI law by 2027 · AI incident YES · Taiwan blockade YES | Claude 12–14%, Codex 38–43%, disagreement node, 5 sources, baseline = Origin model estimate 22% |
+| Claude only (UI) | Gemini `RECESSION26` (market 4%) · two live assumptions | 1–2% with cited research |
+
+A first CLI attempt failed on a schema error. The UI showed "All analysts
+failed" with no number, as designed.
+
+Also checked: `next build` succeeds; eslint and `tsc` are clean. Frame rate is
+about 20 fps in *software-rendered* headless Chromium (SwiftShader, no GPU) on a
+4-core server. That isn't representative of a laptop GPU, and 60 fps was **not
+measured** on real hardware.
 
 ## Screenshots
 
@@ -217,6 +258,8 @@ Also verified manually:
 | ![](docs/screenshots/10-live-claude-forecast.png) live Claude forecast | ![](docs/screenshots/11-research-and-onchain.png) research + onchain |
 | ![](docs/screenshots/12-compare.png) compare | ![](docs/screenshots/13-universe-overview.png) universe overview |
 | ![](docs/screenshots/15-graph-drag-magnetic.png) graph → basket (magnetic) | ![](docs/screenshots/16-mobile.png) mobile |
+| ![](docs/screenshots/18-live-mixed-claude-codex.png) live mixed Claude + Codex | ![](docs/screenshots/19-settings-providers.png) settings · providers |
+| ![](docs/screenshots/20-edge-hover.png) edge relationship hover | ![](docs/screenshots/21-conflict-warning.png) conflict warning |
 
 ## Known limitations
 

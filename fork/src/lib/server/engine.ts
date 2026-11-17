@@ -172,7 +172,7 @@ Run at most 3 web searches. Return: summary (≤120 words of the current real-wo
   return digest;
 }
 
-function analystPrompt(req: ForecastRequest, digest: ResearchDigest | null) {
+function analystPrompt(req: ForecastRequest, digest: ResearchDigest | null, opts: { echoIds?: boolean } = {}) {
   const target = req.target as ForkEvent;
   return `TARGET: P("${target.title}" resolves ${req.targetOutcome})
 ${describeEvent(target)}
@@ -183,8 +183,7 @@ ${scenarioBlock(req)}
 
 RESEARCH DIGEST (${digest ? "web research, cite only these URLs" : "unavailable — rely on your knowledge and say so"}):
 ${digest ? digest.summary + "\n" + digest.findings.map((f) => `- ${f.claim} [${f.title}, ${f.publisher}] ${f.url}`).join("\n") : "(none)"}
-
-Echo targetEventId="${target.id}" and the scenario eventIds/resolutions exactly as given.`;
+${opts.echoIds === false ? "" : `\nEcho targetEventId="${target.id}" and the scenario eventIds/resolutions exactly as given.`}`;
 }
 
 function validateOutput(o: unknown, req: ForecastRequest, allowedUrls: Set<string>): z.infer<typeof AnalystOutput> {
@@ -256,7 +255,7 @@ async function revise(f: Forecast, req: ForecastRequest, digest: ResearchDigest 
       try {
         const r = await runProvider<z.infer<typeof RevisionSchema>>((run.provider as Provider) ?? "claude", {
           system: `${ROLE_SYSTEM[run.role]}\nYou are in a revision round. You may revise or hold your estimate. Do not move toward others merely to agree.`,
-          prompt: `${analystPrompt(req, digest)}\n\nYour previous estimate: ${(run.output!.probability * 100).toFixed(0)}%. Your headline: ${run.output!.headline}\n\nOther analysts' ARGUMENTS (their numbers are withheld):\n${others}\n\nReturn your final probability and a one-sentence note on whether/why you changed it.`,
+          prompt: `${analystPrompt(req, digest, { echoIds: false })}\n\nYour previous estimate: ${(run.output!.probability * 100).toFixed(0)}%. Your headline: ${run.output!.headline}\n\nOther analysts' ARGUMENTS (their numbers are withheld):\n${others}\n\nReturn your final probability and a one-sentence note (plain prose, no ids) on whether/why you changed it.`,
           schema: z.toJSONSchema(RevisionSchema),
           timeoutMs: 120_000,
         });

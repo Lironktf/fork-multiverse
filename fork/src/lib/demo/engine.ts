@@ -80,7 +80,11 @@ export function runDemoForecast(opts: {
       const title = eventTitle(a.eventId, events);
       const why = role === "skeptic" && e.eff.skeptic ? e.eff.skeptic : e.eff.why;
       const dir = e.eff.d[i] * e.sign >= 0 ? "raises" : "lowers";
-      return { claim: `${title} = ${a.outcome}: ${dir} the estimate. ${why}`, why, title, outcome: a.outcome };
+      const claim =
+        a.outcome === "NO"
+          ? `${title} = NO: ${dir} the estimate by ruling out this mechanism — “${why}”`
+          : `${title} = YES: ${dir} the estimate. ${why}`;
+      return { claim, why, title, outcome: a.outcome };
     });
     const top = [...authored].sort((x, y) => {
       const ex = effectFor(target.id, x)!;

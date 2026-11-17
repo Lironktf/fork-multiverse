@@ -65,11 +65,12 @@ function TargetNode({ meta }: { meta: Extract<NodeMeta, { kind: "target" }> }) {
   const f = meta.forecast;
   const observed = observedProbability(meta.event, meta.outcome);
   const p = f?.ensembleProbability ?? null;
-  const base = f?.baselineProbability ?? observed?.value ?? null;
+  const observedOk = observed && !(f?.kind === "MODEL" && observed.kind === "DEMO") ? observed : null;
+  const base = f?.baselineProbability ?? observedOk?.value ?? null;
   const shown = p ?? base;
   const analyzing = !!f && !["complete", "partial", "failed"].includes(f.status);
   const done = f?.modelOutputs.filter((r) => r.status === "done").length ?? 0;
-  const kind = p !== null ? f!.kind : (f?.baselineKind ?? observed?.kind ?? null);
+  const kind = p !== null ? f!.kind : (f?.baselineKind ?? observedOk?.kind ?? (f ? f.kind : null));
   return (
     <div className="flex flex-col items-center" style={{ width: 260 }}>
       <div className="relative" style={{ width: R_TARGET * 2, height: R_TARGET * 2 }}>

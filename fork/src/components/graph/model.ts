@@ -84,7 +84,7 @@ export function buildGraph(input: {
     if (dis?.significant && dis.outlierRole) {
       const id = nid.dis(V);
       const a = rad(ROLE_ANGLES[dis.outlierRole]);
-      nodes.push({ id, type: "disagreement", ax: C.x + Math.cos(a) * 285, ay: C.y + Math.sin(a) * 150 + (Math.sin(a) > 0 ? 95 : -95), r: 22 });
+      nodes.push({ id, type: "disagreement", ax: C.x + Math.cos(a) * 395, ay: C.y + Math.sin(a) * 165, r: 22 });
       meta.set(id, { kind: "disagreement", forecast: curForecast });
       edges.push({ id: `${id}--f`, from: nid.forecast(V, dis.outlierRole), to: id, kind: "contradiction", label: "Significant model disagreement" });
     }

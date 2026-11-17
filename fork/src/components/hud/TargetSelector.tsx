@@ -117,7 +117,7 @@ export function TargetPicker({ onPicked, autoFocus = true }: { onPicked?: () => 
   );
 }
 
-export function TargetSelector() {
+export function TargetSelector({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const { target, events, currentVerseId, forecasts, forecastIndex, mode } = useUniverse(
     useShallow((s) => ({ target: s.target, events: s.events, currentVerseId: s.currentVerseId, forecasts: s.forecasts, forecastIndex: s.forecastIndex, mode: s.mode })),
@@ -130,13 +130,13 @@ export function TargetSelector() {
   const outcomes = ev?.eventType === "binary" ? ["YES", "NO"] : null;
 
   return (
-    <div className="pointer-events-auto flex items-center gap-2">
-      <ModeSwitch />
+    <div className="pointer-events-auto flex min-w-0 items-center gap-2 whitespace-nowrap">
+      {!compact && <ModeSwitch />}
       <Popover.Root open={open} onOpenChange={setOpen}>
         <Popover.Trigger asChild>
           <button
             disabled={busy}
-            className="group flex h-[34px] max-w-[min(52vw,560px)] items-center gap-2.5 rounded-lg border border-line bg-surface/80 px-3 text-left backdrop-blur transition-colors hover:border-line-2"
+            className={`group flex h-[34px] min-w-0 items-center ${compact ? "max-w-full" : "max-w-[min(40vw,520px)]"} gap-2.5 rounded-lg border border-line bg-surface/80 px-3 text-left backdrop-blur transition-colors hover:border-line-2`}
             aria-label={`Change target. Current: ${ev?.title}`}
             data-testid="target-selector"
           >
@@ -158,7 +158,7 @@ export function TargetSelector() {
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
-      {outcomes && (
+      {outcomes && !compact && (
         <div className="seg" role="radiogroup" aria-label="Target outcome">
           {outcomes.map((o) => (
             <button key={o} role="radio" aria-checked={target.outcome === o} disabled={busy} onClick={() => useUniverse.getState().setTarget({ ...target, outcome: o })} className="relative">
@@ -169,7 +169,7 @@ export function TargetSelector() {
         </div>
       )}
       {mode === "markets" && snap && (
-        <div className="hidden items-center gap-2 xl:flex" aria-label="Market quote">
+        <div className="hidden shrink-0 items-center gap-2 whitespace-nowrap min-[1360px]:flex" aria-label="Market quote">
           <KindTag kind="MARKET" small />
           <span className="num text-[10.5px] text-ink-3">
             bid <span className="text-ink-2">{snap.bid ?? "—"}</span> · ask <span className="text-ink-2">{snap.ask ?? "—"}</span>

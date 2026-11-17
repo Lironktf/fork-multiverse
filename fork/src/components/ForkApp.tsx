@@ -168,8 +168,8 @@ function Workspace() {
           <TopRight />
         </div>
         {!desktop && (
-          <div className={`absolute inset-x-3 flex overflow-x-auto pb-1 ${tablet ? "top-[100px] justify-center" : "top-[104px] justify-start"}`}>
-            <TargetSelector />
+          <div className={`absolute inset-x-3 flex pb-1 ${tablet ? "top-[100px] justify-center overflow-x-auto" : "top-[96px] justify-center"}`}>
+            <TargetSelector compact={!tablet} />
           </div>
         )}
 
