@@ -33,19 +33,17 @@ export function WalletButton() {
     if (wallet && !connected && !connecting) connect().catch(() => {});
   }, [wallet]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const airdrop = async () => {
+  // The devnet RPC faucet now returns 410 ("faucet is closed"); point to the official web faucet instead.
+  const getSol = async () => {
     if (!publicKey) return;
-    setBusy(true);
     try {
-      const sig = await connection.requestAirdrop(publicKey, LAMPORTS_PER_SOL / 2);
-      const latest = await connection.getLatestBlockhash();
-      await connection.confirmTransaction({ signature: sig, ...latest }, "confirmed");
-      useUI.getState().toast("Received 0.5 devnet SOL.");
-    } catch (e) {
-      useUI.getState().toast(`Devnet faucet refused the airdrop (${(e as Error).message.slice(0, 80)}). Try faucet.solana.com.`, "warn");
-    } finally {
-      setBusy(false);
+      await navigator.clipboard.writeText(publicKey.toBase58());
+      useUI.getState().toast("Address copied. Paste it into the Solana devnet faucet.");
+    } catch {
+      /* clipboard may be blocked; the faucet still opens */
     }
+    window.open("https://faucet.solana.com", "_blank", "noopener");
+    setBusy((b) => !b); // refresh balance when the user returns
   };
 
   return (
@@ -70,8 +68,8 @@ export function WalletButton() {
                 <span className="num text-ink-2">{balance === null ? "—" : `${balance.toFixed(3)} SOL`}</span>
               </div>
               <div className="mt-3 flex gap-1.5">
-                <button className="btn !h-7 !text-[11px]" onClick={airdrop} disabled={busy}>
-                  <Droplets size={12} /> {busy ? "Requesting…" : "Devnet SOL"}
+                <button className="btn !h-7 !text-[11px]" onClick={getSol}>
+                  <Droplets size={12} /> Get devnet SOL
                 </button>
                 <button className="btn !h-7 !text-[11px]" onClick={() => disconnect()}>
                   <LogOut size={12} /> Disconnect

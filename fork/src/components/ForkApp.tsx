@@ -137,17 +137,17 @@ function Workspace() {
     <>
       <motion.div animate={hudFade} className="pointer-events-none fixed inset-0 z-10">
         {/* top bar */}
-        <div className="absolute inset-x-4 top-4 flex items-start justify-between gap-3">
+        <div className="absolute inset-x-4 top-4 z-20 flex items-start justify-between gap-3">
           <TopLeft />
-          {tablet && (
+          {desktop && (
             <div className="absolute left-1/2 top-0 -translate-x-1/2">
               <TargetSelector />
             </div>
           )}
           <TopRight />
         </div>
-        {!tablet && (
-          <div className="absolute inset-x-3 top-[104px] flex justify-center overflow-x-auto">
+        {!desktop && (
+          <div className={`absolute inset-x-3 flex overflow-x-auto pb-1 ${tablet ? "top-[100px] justify-center" : "top-[104px] justify-start"}`}>
             <TargetSelector />
           </div>
         )}
@@ -157,17 +157,17 @@ function Workspace() {
             {/* left: discovery */}
             <AnimatePresence initial={false}>
               {discovery ? (
-                <motion.div key="disc" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ type: "spring", stiffness: 380, damping: 36 }} className="absolute bottom-[78px] left-4 top-[124px] w-[min(316px,30vw)]">
+                <motion.div key="disc" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ type: "spring", stiffness: 380, damping: 36 }} className={`absolute bottom-[78px] left-4 w-[min(316px,30vw)] ${desktop ? "top-[124px]" : "top-[150px] z-10 w-[340px]"}`}>
                   <DiscoveryPanel onCollapse={() => setDiscovery(false)} />
                 </motion.div>
               ) : (
-                <motion.button key="rail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDiscovery(true)} className="surface pointer-events-auto absolute left-4 top-[124px] flex h-9 items-center gap-2 px-3 text-[11.5px] text-ink-2 hover:text-ink" aria-label="Open event discovery">
+                <motion.button key="rail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDiscovery(true)} className={`surface pointer-events-auto absolute left-4 flex h-9 items-center gap-2 px-3 text-[11.5px] text-ink-2 hover:text-ink ${desktop ? "top-[124px]" : "top-[150px]"}`} aria-label="Open event discovery">
                   <ChevronsRight size={13} /> Possible futures
                 </motion.button>
               )}
             </AnimatePresence>
             {/* right: forecast + basket */}
-            <div className="absolute bottom-[78px] right-4 top-[64px] flex w-[min(352px,34vw)] flex-col justify-end gap-3">
+            <div className={`absolute bottom-[78px] right-4 flex w-[min(352px,40vw)] flex-col justify-end gap-3 ${desktop ? "top-[64px]" : "top-[150px]"}`}>
               <div className="flex min-h-[160px] flex-1 flex-col justify-start">
                 <ForecastPanel />
               </div>

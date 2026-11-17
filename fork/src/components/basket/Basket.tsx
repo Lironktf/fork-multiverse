@@ -244,7 +244,7 @@ export function Basket({ compact = false }: { compact?: boolean }) {
         <div className="px-3.5 pb-2">
           <button onClick={() => setShowInherited((v) => !v)} className="flex w-full items-center gap-1.5 text-[11px] text-ink-3 hover:text-ink-2" aria-expanded={showInherited}>
             <ChevronDown size={11} className={`transition-transform ${showInherited ? "" : "-rotate-90"}`} aria-hidden />
-            Inherits {inherited.length} assumption{inherited.length > 1 ? "s" : ""} from {cur.name}
+            Builds on {inherited.length} assumption{inherited.length > 1 ? "s" : ""} of {cur.name}
           </button>
           <AnimatePresence initial={false}>
             {showInherited && (

@@ -13,6 +13,7 @@ import { baselineFor, forkDisagreement, isTerminal, requestForecast, requestNext
 import { ORIGIN_ID } from "@/lib/domain/verse";
 import { ProbabilityDisplay, RangeTrack } from "./ProbabilityDisplay";
 import { Onchain } from "@/components/solana/Onchain";
+import { MarketContext } from "./MarketContext";
 
 const ROLE_ORDER: ModelRole[] = ["causal", "empirical", "market", "skeptic"];
 
@@ -353,8 +354,8 @@ function DisagreementView({ f }: { f: Forecast }) {
 }
 
 export function ForecastPanel() {
-  const { target, currentVerseId, forecasts, forecastIndex, verses, engineMode, events } = useUniverse(
-    useShallow((s) => ({ target: s.target, currentVerseId: s.currentVerseId, forecasts: s.forecasts, forecastIndex: s.forecastIndex, verses: s.verses, engineMode: s.engine, events: s.events })),
+  const { target, currentVerseId, forecasts, forecastIndex, verses, engineMode, events, mode } = useUniverse(
+    useShallow((s) => ({ target: s.target, currentVerseId: s.currentVerseId, forecasts: s.forecasts, forecastIndex: s.forecastIndex, verses: s.verses, engineMode: s.engine, events: s.events, mode: s.mode })),
   );
   const { inspectRole, disagreementOpen, phase } = useUI(useShallow((s) => ({ inspectRole: s.inspectRole, disagreementOpen: s.disagreementOpen, phase: s.forkPhase })));
   const f = forecastFor({ forecasts, forecastIndex }, currentVerseId, target);
@@ -421,6 +422,7 @@ export function ForecastPanel() {
                   {f.aggregation} · {f.engine === "demo" ? "demonstration fixtures" : `generated ${new Date(f.generatedAt).toLocaleString()}`}
                 </p>
               )}
+              {mode === "markets" && <MarketContext />}
               <NextFork verseId={currentVerseId} />
               {f && <Sources f={f} />}
               <Onchain />

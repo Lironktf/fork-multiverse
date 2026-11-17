@@ -42,7 +42,7 @@ export function SavedVerses() {
               aria-label="Rename Verse"
             />
           ) : (
-            <button onClick={() => navigateTo(v.id)} className={`min-w-0 flex-1 truncate text-left text-[12px] ${v.id === current ? "text-accent" : "text-ink"}`} title={`Enter ${v.name}`}>
+            <button onClick={() => (navigateTo(v.id), useUI.getState().set({ panel: null }))} className={`min-w-0 flex-1 truncate text-left text-[12px] ${v.id === current ? "text-accent" : "text-ink"}`} title={`Enter ${v.name}`} aria-label={`Enter ${v.name}`}>
               {v.name}
               {v.relationshipType === "disagreement-split" && <span className="ml-1.5 text-[10px] text-warn/80">split</span>}
             </button>
@@ -95,7 +95,7 @@ export function SavedVerses() {
 
   const count = Object.keys(verses).length;
   return (
-    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="surface pointer-events-auto flex max-h-[min(70vh,600px)] w-[min(92vw,360px)] flex-col overflow-hidden" data-testid="saved-verses">
+    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="surface surface-solid pointer-events-auto flex max-h-[min(70vh,600px)] w-[min(92vw,360px)] flex-col overflow-hidden" data-testid="saved-verses">
       <header className="flex items-center justify-between px-3.5 pb-2 pt-3">
         <h2 className="text-[12px] font-medium text-ink">Universe</h2>
         <span className="num text-[10.5px] text-ink-3">{count} Verse{count !== 1 ? "s" : ""} · {events[target.eventId]?.title.slice(0, 26)}…</span>

@@ -111,9 +111,9 @@ export function ActionBar({ onAddEvent }: { onAddEvent: () => void }) {
   const busy = useUI((s) => s.forkPhase !== "idle");
   const parent = verses[current]?.parentId;
   const Btn = ({ icon, label, onClick, disabled, testid, primary }: { icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean; testid?: string; primary?: boolean }) => (
-    <motion.button whileTap={{ scale: 0.95 }} className={`ibtn !h-8 !px-2.5 text-[11.5px] ${primary ? "!text-accent" : ""}`} onClick={onClick} disabled={disabled || busy} aria-label={label} data-testid={testid}>
+    <motion.button whileTap={{ scale: 0.95 }} className={`ibtn !h-8 !px-2.5 whitespace-nowrap text-[11.5px] ${primary ? "!text-accent" : ""}`} onClick={onClick} disabled={disabled || busy} aria-label={label} title={label} data-testid={testid}>
       {icon}
-      <span className="hidden lg:inline">{label}</span>
+      <span className="hidden min-[1360px]:inline">{label}</span>
     </motion.button>
   );
   return (
