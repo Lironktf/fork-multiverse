@@ -128,7 +128,7 @@ const COMMON_RULES = `Rules:
 - Do not invent sources. In evidence[], set sourceUrl ONLY to a URL that appears in the research digest provided; otherwise null.
 - Distinguish correlation from causation; say "model-inferred" for mechanisms you hypothesise.
 - pivotalAssumption: the single hidden premise that most drives your number, phrased as a yes/no event someone could assume (e.g. "Rate cuts are driven by a growth scare rather than falling inflation").
-- headline: one sentence, your core mechanism.
+- headline: one sentence stating the mechanism as seen through YOUR analytical lens specifically (not a neutral summary another analyst could also have written).
 - Keep reasoning under 180 words. Today is ${new Date().toISOString().slice(0, 10)}.`;
 
 interface ResearchDigest {

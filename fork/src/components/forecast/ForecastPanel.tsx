@@ -335,8 +335,12 @@ function DisagreementView({ f }: { f: Forecast }) {
             </div>
             <div className="meta mt-2">premise</div>
             <p className="mt-0.5 text-[11.5px] leading-snug text-ink">{n.premise}</p>
-            <div className="meta mt-2">mechanism</div>
-            <p className="mt-0.5 text-[11px] leading-snug text-ink-2">{n.mechanism}</p>
+            {n.mechanism && n.mechanism !== n.premise && n.mechanism.replace(/\.$/, "") !== n.premise && (
+              <>
+                <div className="meta mt-2">mechanism</div>
+                <p className="mt-0.5 text-[11px] leading-snug text-ink-2">{n.mechanism}</p>
+              </>
+            )}
           </div>
         ))}
       </div>

@@ -85,7 +85,12 @@ export async function runClaude<T = unknown>(call: ClaudeCall): Promise<ClaudeRe
     (call.tools ?? []).join(","),
   ];
   if (call.tools?.length) args.push("--allowedTools", call.tools.join(","));
-  if (call.schema) args.push("--json-schema", JSON.stringify(call.schema));
+  if (call.schema) {
+    // the CLI's validator rejects the draft-2020-12 meta-schema URI that zod emits
+    const { $schema: _drop, ...schema } = call.schema as Record<string, unknown>;
+    void _drop;
+    args.push("--json-schema", JSON.stringify(schema));
+  }
 
   await acquire();
   const started = Date.now();

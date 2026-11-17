@@ -645,10 +645,12 @@ export class GraphEngine {
       const z1 = b.z + b.len;
       const p0 = proj(b.x, b.y, z0);
       const p1 = proj(b.x, b.y, z1);
-      const a = this.fx.branch * Math.min(1, (1 - z0) * 1.6) * 0.55;
+      const a = this.fx.branch * Math.min(1, (1 - z0) * 2.2) * 0.85;
       if (a <= 0.01) continue;
       ctx.strokeStyle = rgba(COLORS.accent, a);
-      ctx.lineWidth = Math.min(2.2, 0.5 / z0);
+      ctx.shadowColor = rgba(COLORS.accent, a * 0.8);
+      ctx.shadowBlur = 6;
+      ctx.lineWidth = Math.min(3.2, 0.9 / z0);
       ctx.beginPath();
       ctx.moveTo(p1.x, p1.y);
       ctx.lineTo(p0.x, p0.y);
@@ -662,6 +664,7 @@ export class GraphEngine {
       ctx.lineTo(t2.x, t2.y);
       ctx.stroke();
     }
+    ctx.shadowBlur = 0;
   }
 
   private drawOrbits(ctx: CanvasRenderingContext2D) {

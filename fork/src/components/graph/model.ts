@@ -74,7 +74,7 @@ export function buildGraph(input: {
     for (const run of curForecast.modelOutputs) {
       const id = nid.forecast(V, run.role);
       const a = rad(ROLE_ANGLES[run.role]);
-      nodes.push({ id, type: "forecast", ax: C.x + Math.cos(a) * 170, ay: C.y + Math.sin(a) * 150, r: 26 });
+      nodes.push({ id, type: "forecast", ax: C.x + Math.cos(a) * 205, ay: C.y + Math.sin(a) * 150, r: 26 });
       meta.set(id, { kind: "forecast", role: run.role, forecast: curForecast, verseId: V });
       const p = finalProbability(run);
       const kind = p === null || base === null ? "forecast" : p - base > 0.005 ? "forecast-up" : p - base < -0.005 ? "forecast-down" : "forecast";
