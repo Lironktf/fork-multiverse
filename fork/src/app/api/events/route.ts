@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { searchGeminiEvents } from "@/lib/server/gemini";
+import { prewarm, searchGeminiEvents } from "@/lib/server/gemini";
+
+prewarm();
 
 export const dynamic = "force-dynamic";
 

@@ -17,7 +17,7 @@ import "server-only";
 import type { EventCategory, ForkEvent, MarketSnapshot } from "@/lib/domain/types";
 
 const BASE = process.env.GEMINI_API_BASE ?? "https://api.gemini.com";
-const TTL_MS = 45_000;
+const TTL_MS = 90_000;
 const MIN_GAP_MS = 1_000;
 
 type Cached = { at: number; value: unknown };
@@ -42,11 +42,23 @@ export class GeminiUnavailable extends Error {}
 async function getJson<T>(path: string): Promise<{ value: T; fetchedAt: number; cached: boolean }> {
   const hit = cache.get(path);
   if (hit && Date.now() - hit.at < TTL_MS) return { value: hit.value as T, fetchedAt: hit.at, cached: true };
+  // stale-while-revalidate: serve a recent copy (its true fetch time is reported) and refresh behind it
+  if (hit && Date.now() - hit.at < 600_000 && !inflight.has(path)) {
+    cache.set(path, { ...hit, at: hit.at }); // keep original timestamp
+    void refresh<T>(path, hit).catch(() => {});
+    return { value: hit.value as T, fetchedAt: hit.at, cached: true };
+  }
   if (inflight.has(path)) {
     await inflight.get(path);
     const h = cache.get(path)!;
     return { value: h.value as T, fetchedAt: h.at, cached: true };
   }
+  await refresh<T>(path, hit);
+  const h = cache.get(path) ?? hit!;
+  return { value: h.value as T, fetchedAt: h.at, cached: false };
+}
+
+async function refresh<T>(path: string, hit: Cached | undefined): Promise<void> {
   const p = (async () => {
     await throttle();
     const ctrl = new AbortController();
@@ -68,8 +80,6 @@ async function getJson<T>(path: string): Promise<{ value: T; fetchedAt: number; 
   })();
   inflight.set(path, p);
   await p;
-  const h = cache.get(path) ?? hit!;
-  return { value: h.value as T, fetchedAt: h.at, cached: false };
 }
 
 /* ---------- raw shapes (only fields we read) ---------- */
@@ -222,27 +232,56 @@ export function normalizeEvent(raw: RawEvent, fetchedAt: number): ForkEvent {
 // scenario analysis; we hide events expiring within 36h by default.
 const SHORT_HORIZON_MS = 36 * 3600_000;
 
-export async function searchGeminiEvents(opts: { q?: string; category?: string; limit?: number }) {
-  const params = new URLSearchParams({ status: "active", limit: String(opts.limit ?? 200) });
-  if (opts.q) params.set("search", opts.q);
-  if (opts.category) params.set("category", opts.category);
-  const { value, fetchedAt, cached } = await getJson<{ data: RawEvent[]; pagination: { total: number } }>(
-    `/v1/prediction-markets/events?${params}`,
-  );
+const BROWSE_CATEGORIES = ["Economics", "Crypto", "Politics", "Tech", "Business", "Commodities", "Culture"];
+
+function shape(raw: RawEvent[], fetchedAt: number) {
   const now = Date.now();
-  const events = value.data
+  return raw
     .filter((e) => e.category?.toLowerCase() !== "sports")
     .filter((e) => !e.expiryDate || new Date(e.expiryDate).getTime() - now > SHORT_HORIZON_MS)
     .map((e) => normalizeEvent(e, fetchedAt));
-  // collapse repeating series (e.g. one "BTC price on <date>" per date) to the
-  // highest-volume instance so the library isn't flooded with near-duplicates
+}
+
+/** Collapse repeating series (one "BTC price on <date>" per date) to the highest-volume instance. */
+function collapseSeries(events: ForkEvent[]) {
   const bySeries = new Map<string, ForkEvent>();
   for (const e of events) {
     const key = e.title.replace(/\d+/g, "#");
     const prev = bySeries.get(key);
     if (!prev || (e.metadata.volumeUsd ?? 0) > (prev.metadata.volumeUsd ?? 0)) bySeries.set(key, e);
   }
-  return { events: [...bySeries.values()], fetchedAt: new Date(fetchedAt).toISOString(), cached, total: value.pagination?.total ?? events.length };
+  return [...bySeries.values()].sort((a, b) => (b.metadata.volumeUsd ?? 0) - (a.metadata.volumeUsd ?? 0));
+}
+
+/**
+ * Search uses the documented `search` filter (one upstream call). Browsing
+ * (no query) walks the non-sports categories, because an unfiltered list is
+ * dominated by sports and intraday contracts.
+ */
+export async function searchGeminiEvents(opts: { q?: string; category?: string; limit?: number }) {
+  if (opts.q) {
+    const params = new URLSearchParams({ status: "active", limit: String(opts.limit ?? 100), search: opts.q });
+    if (opts.category) params.set("category", opts.category);
+    const { value, fetchedAt, cached } = await getJson<{ data: RawEvent[]; pagination: { total: number } }>(`/v1/prediction-markets/events?${params}`);
+    return { events: collapseSeries(shape(value.data, fetchedAt)), fetchedAt: new Date(fetchedAt).toISOString(), cached, total: value.pagination?.total ?? 0 };
+  }
+  const cats = opts.category ? [opts.category] : BROWSE_CATEGORIES;
+  const results = await Promise.allSettled(
+    cats.map((c) => getJson<{ data: RawEvent[] }>(`/v1/prediction-markets/events?${new URLSearchParams({ status: "active", limit: "100", category: c })}`)),
+  );
+  const ok = results.filter((r): r is PromiseFulfilledResult<{ value: { data: RawEvent[] }; fetchedAt: number; cached: boolean }> => r.status === "fulfilled");
+  if (!ok.length) throw new GeminiUnavailable((results[0] as PromiseRejectedResult).reason?.message ?? "all category requests failed");
+  const events = ok.flatMap((r) => shape(r.value.value.data, r.value.fetchedAt));
+  const oldest = Math.min(...ok.map((r) => r.value.fetchedAt));
+  return { events: collapseSeries(events), fetchedAt: new Date(oldest).toISOString(), cached: ok.every((r) => r.value.cached), total: events.length, partial: ok.length < cats.length };
+}
+
+/** Warm the browse cache once at boot so the first visitor doesn't wait on the 1 req/s gate. */
+let warmed = false;
+export function prewarm() {
+  if (warmed) return;
+  warmed = true;
+  searchGeminiEvents({}).catch(() => (warmed = false));
 }
 
 export async function getGeminiEvent(ticker: string) {
