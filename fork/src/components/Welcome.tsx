@@ -54,6 +54,7 @@ export function Welcome() {
         {/* focal point — becomes the target node */}
         <motion.div
           className="relative mb-9 h-[74px] w-[74px]"
+          data-focal="welcome"
           animate={leaving ? { scale: 3.2, opacity: 0 } : { scale: 1, opacity: 1 }}
           transition={{ duration: leaving ? 0.7 : 0.6, ease: [0.65, 0, 0.35, 1] }}
           aria-hidden

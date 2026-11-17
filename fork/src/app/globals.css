@@ -365,3 +365,11 @@ body {
     transform: none;
   }
 }
+
+/* first launch: the welcome orb stands in for the Origin's target node */
+main[data-started="false"] .gnode[data-type="target"] .gnode-inner {
+  opacity: 0;
+}
+main[data-started="true"] .gnode[data-type="target"] .gnode-inner {
+  transition: opacity 0.9s var(--ease-out) 0.15s;
+}

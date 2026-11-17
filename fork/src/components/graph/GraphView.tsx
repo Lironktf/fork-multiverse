@@ -93,6 +93,16 @@ function onNodeActivate(id: string, meta: NodeMeta) {
   ui.set({ selectedNode: ui.selectedNode === id ? null : id });
 }
 
+/** Screen y of the welcome focal orb (kept in sync with Welcome's layout). */
+export function welcomeFocalY() {
+  const el = document.querySelector('[data-focal="welcome"]');
+  if (el) {
+    const r = el.getBoundingClientRect();
+    return r.top + r.height / 2;
+  }
+  return window.innerHeight * 0.25;
+}
+
 export function GraphView() {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -193,8 +203,11 @@ export function GraphView() {
       focusCurrent();
     } else {
       // first launch: the universe is a distant field of nodes behind the question
-      engine.cam = { x: v.visualMetadata.x, y: v.visualMetadata.y - 40, k: 0.24 };
-      engine.flyTo(v.visualMetadata.x, v.visualMetadata.y - 40, 0.3, 4000);
+      // the Origin's target sits exactly behind the welcome focal point, so the orb becomes the node
+      const orbY = welcomeFocalY();
+      const dy = window.innerHeight / 2 - orbY;
+      engine.cam = { x: v.visualMetadata.x, y: v.visualMetadata.y + dy / 0.24, k: 0.24 };
+      engine.flyTo(v.visualMetadata.x, v.visualMetadata.y + dy / 0.3, 0.3, 4000);
     }
 
     return () => {

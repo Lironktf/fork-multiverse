@@ -144,7 +144,7 @@ export class GraphEngine {
     for (let i = 0; i < 230; i++) {
       this.stars.push({ x: Math.random(), y: Math.random(), z: 0.12 + Math.pow(Math.random(), 2) * 0.88, a: 0.25 + Math.random() * 0.6 });
     }
-    for (let i = 0; i < 46; i++) this.branches.push(this.makeBranch(Math.random()));
+    for (let i = 0; i < 34; i++) this.branches.push(this.makeBranch(0.2 + Math.random() * 0.8));
   }
 
   private makeBranch(z: number): Branch {
@@ -703,12 +703,14 @@ export class GraphEngine {
       const z1 = b.z + b.len;
       const p0 = proj(b.x, b.y, z0);
       const p1 = proj(b.x, b.y, z1);
-      const a = this.fx.branch * Math.min(1, (1 - z0) * 2.2) * 0.85;
+      // fade in from the distance, fade out before a branch fills the frame
+      const near = Math.min(1, Math.max(0, (z0 - 0.14) / 0.2));
+      const a = this.fx.branch * Math.min(1, (1 - z0) * 1.8) * near * 0.6;
       if (a <= 0.01) continue;
       ctx.strokeStyle = rgba(COLORS.accent, a);
-      ctx.shadowColor = rgba(COLORS.accent, a * 0.8);
-      ctx.shadowBlur = 6;
-      ctx.lineWidth = Math.min(3.2, 0.9 / z0);
+      ctx.shadowColor = rgba(COLORS.accent, a * 0.7);
+      ctx.shadowBlur = 4;
+      ctx.lineWidth = Math.min(1.8, 0.45 / z0);
       ctx.beginPath();
       ctx.moveTo(p1.x, p1.y);
       ctx.lineTo(p0.x, p0.y);

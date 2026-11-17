@@ -129,7 +129,7 @@ function Workspace() {
   const [discovery, setDiscovery] = useState(true);
   const [sheet, setSheet] = useState<"forecast" | "basket" | "discover">("basket");
   const cinematic = phase === "rupture" || phase === "travel" || phase === "arrive";
-  const hudFade = { opacity: cinematic ? 0.08 : 1, transition: { duration: cinematic ? 0.25 : 0.6 } };
+  const hudFade = { opacity: cinematic ? 0.04 : 1, transition: { duration: cinematic ? 0.25 : 0.6 } };
 
   useEffect(() => {
     if (tablet && !desktop) setDiscovery(false);
