@@ -28,7 +28,7 @@ import {
 import { observedProbability } from "@/lib/domain/market";
 import { ensembleMean, summarizeDisagreement } from "@/lib/forecast/aggregate";
 import { runDemoForecast, demoNextForks } from "@/lib/demo/engine";
-import { claudeAvailable, runClaude } from "./claude";
+import { providerStatus, providersFor, runProvider, PROVIDER_LABEL, type Provider, type ProviderMode } from "./providers";
 import { getResearch, loadForecast, putResearch, saveForecast } from "./db";
 
 export const ScenarioItemIn = z.object({
@@ -43,6 +43,7 @@ export const ForecastRequest = z.object({
   targetOutcome: z.string(),
   scenario: z.array(ScenarioItemIn).max(24),
   engine: z.enum(["auto", "demo"]).default("auto"),
+  providers: z.enum(["mixed", "claude", "codex"]).default("mixed"),
   baseline: z
     .object({ value: z.number(), kind: z.enum(["MARKET", "MODEL", "DEMO"]), label: z.string() })
     .nullable()
@@ -54,11 +55,15 @@ const jobs = new Map<string, Forecast>();
 const ROLES: ModelRole[] = ["causal", "empirical", "market", "skeptic"];
 
 export function engineStatus() {
-  const c = claudeAvailable();
+  const p = providerStatus();
   return {
-    engine: c.available ? ("claude-cli" as const) : ("demo" as const),
-    claudeVersion: c.version,
+    engine: p.claude || p.codex ? ("cli" as const) : ("demo" as const),
+    claude: p.claude,
+    claudeVersion: p.claudeVersion,
+    codex: p.codex,
+    codexVersion: p.codexVersion,
     model: process.env.FORK_CLAUDE_MODEL ?? "sonnet",
+    codexModel: process.env.FORK_CODEX_MODEL ?? "codex default",
     research: process.env.FORK_RESEARCH !== "0",
     revision: process.env.FORK_REVISION ?? "auto",
   };
@@ -141,12 +146,12 @@ const ResearchSchema = z.object({
     .max(8),
 });
 
-async function research(req: ForecastRequest): Promise<ResearchDigest | null> {
+async function research(req: ForecastRequest, provider: Provider): Promise<ResearchDigest | null> {
   const target = req.target as ForkEvent;
   const key = JSON.stringify([target.id, req.targetOutcome, req.scenario.map((s) => [(s.event as ForkEvent).id, s.outcome])]);
   const cached = getResearch(key) as ResearchDigest | null;
   if (cached) return cached;
-  const r = await runClaude<ResearchDigest>({
+  const r = await runProvider<ResearchDigest>(provider, {
     system:
       "You are a research assistant for a forecasting team. Use web search to gather CURRENT, citable facts. Never fabricate URLs: every url must be a page you actually found via search.",
     prompt: `Target question: "${target.title}" (outcome ${req.targetOutcome}). ${describeEvent(target)}
@@ -155,7 +160,7 @@ Hypothetical scenario being analysed:
 ${scenarioBlock(req)}
 
 Run at most 3 web searches. Return: summary (≤120 words of the current real-world state relevant to the target and each assumption) and up to 6 findings, each a concrete claim with the exact url/title/publisher where you found it.`,
-    tools: ["WebSearch"],
+    webSearch: true,
     schema: z.toJSONSchema(ResearchSchema),
     model: process.env.FORK_CLAUDE_RESEARCH_MODEL ?? process.env.FORK_CLAUDE_MODEL ?? "sonnet",
     timeoutMs: 150_000,
@@ -193,23 +198,39 @@ function validateOutput(o: unknown, req: ForecastRequest, allowedUrls: Set<strin
   return parsed;
 }
 
-async function runAnalyst(f: Forecast, role: ModelRole, req: ForecastRequest, digest: ResearchDigest | null) {
+/**
+ * Role → provider. In mixed mode the two families alternate (A,C Claude · B,D
+ * Codex) so the skeptic never shares a model family with the causal analyst.
+ * ASSUMPTION: cross-family assignment yields more informative disagreement than
+ * same-family prompting; overturned if mixed and single-family spreads match.
+ */
+const MIXED_ASSIGNMENT: Record<ModelRole, Provider> = { causal: "claude", empirical: "codex", market: "claude", skeptic: "codex" };
+function providerFor(role: ModelRole, pool: Provider[]): Provider {
+  return pool.length > 1 ? MIXED_ASSIGNMENT[role] : pool[0];
+}
+
+async function runAnalyst(f: Forecast, role: ModelRole, req: ForecastRequest, digest: ResearchDigest | null, pool: Provider[]) {
   const run = f.modelOutputs.find((r) => r.role === role)!;
   const allowed = new Set((digest?.findings ?? []).map((x) => x.url));
   run.status = "running";
   run.startedAt = new Date().toISOString();
   persist(f);
+  const primary = providerFor(role, pool);
   for (let attempt = 1; attempt <= 2; attempt++) {
     run.attempts = attempt;
+    // a failed first attempt retries on the other family when one is available — the
+    // result is labelled with the model that actually answered
+    const provider = attempt === 2 && pool.length > 1 ? pool.find((p) => p !== primary)! : primary;
+    run.provider = provider;
     try {
-      const r = await runClaude({
+      const r = await runProvider(provider, {
         system: `${ROLE_SYSTEM[role]}\n\n${COMMON_RULES}`,
         prompt: analystPrompt(req, digest),
         schema: ANALYST_SCHEMA,
         timeoutMs: 170_000,
       });
       run.output = validateOutput(r.structured, req, allowed);
-      run.model = `${r.model} via claude -p`;
+      run.model = `${r.model} via ${PROVIDER_LABEL[provider]}`;
       run.status = "done";
       run.error = null;
       break;
@@ -224,7 +245,7 @@ async function runAnalyst(f: Forecast, role: ModelRole, req: ForecastRequest, di
 
 const RevisionSchema = z.object({ probability: z.number().min(0.01).max(0.99), note: z.string().max(400) });
 
-async function revise(f: Forecast, req: ForecastRequest) {
+async function revise(f: Forecast, req: ForecastRequest, digest: ResearchDigest | null) {
   const done = f.modelOutputs.filter((r) => r.status === "done" && r.output);
   await Promise.all(
     done.map(async (run) => {
@@ -233,9 +254,9 @@ async function revise(f: Forecast, req: ForecastRequest) {
         .map((o) => `${MODEL_ROLES[o.role].label}: ${o.output!.headline} Counterpoints: ${o.output!.counterarguments.join("; ")}`)
         .join("\n");
       try {
-        const r = await runClaude<z.infer<typeof RevisionSchema>>({
+        const r = await runProvider<z.infer<typeof RevisionSchema>>((run.provider as Provider) ?? "claude", {
           system: `${ROLE_SYSTEM[run.role]}\nYou are in a revision round. You may revise or hold your estimate. Do not move toward others merely to agree.`,
-          prompt: `${analystPrompt(req, null)}\n\nYour previous estimate: ${(run.output!.probability * 100).toFixed(0)}%. Your headline: ${run.output!.headline}\n\nOther analysts' ARGUMENTS (their numbers are withheld):\n${others}\n\nReturn your final probability and a one-sentence note on whether/why you changed it.`,
+          prompt: `${analystPrompt(req, digest)}\n\nYour previous estimate: ${(run.output!.probability * 100).toFixed(0)}%. Your headline: ${run.output!.headline}\n\nOther analysts' ARGUMENTS (their numbers are withheld):\n${others}\n\nReturn your final probability and a one-sentence note on whether/why you changed it.`,
           schema: z.toJSONSchema(RevisionSchema),
           timeoutMs: 120_000,
         });
@@ -248,13 +269,14 @@ async function revise(f: Forecast, req: ForecastRequest) {
   );
 }
 
-async function runClaudeForecast(f: Forecast, req: ForecastRequest) {
+async function runCliForecast(f: Forecast, req: ForecastRequest, pool: Provider[]) {
   let digest: ResearchDigest | null = null;
   if (process.env.FORK_RESEARCH !== "0") {
     f.status = "researching";
     persist(f);
     try {
-      digest = await research(req);
+      // Claude's WebSearch when Claude is in the pool, else Codex's live web search
+      digest = await research(req, pool.includes("claude") ? "claude" : "codex");
     } catch (e) {
       f.researchNote = `Research step failed (${(e as Error).message.slice(0, 120)}); analysts worked without fresh sources.`;
     }
@@ -267,7 +289,7 @@ async function runClaudeForecast(f: Forecast, req: ForecastRequest) {
   }
   f.status = "analyzing";
   persist(f);
-  await Promise.all(ROLES.map((role) => runAnalyst(f, role, req, digest)));
+  await Promise.all(ROLES.map((role) => runAnalyst(f, role, req, digest, pool)));
 
   let dis = summarizeDisagreement(f.modelOutputs);
   const revMode = process.env.FORK_REVISION ?? "auto";
@@ -275,7 +297,7 @@ async function runClaudeForecast(f: Forecast, req: ForecastRequest) {
     f.status = "revising";
     f.disagreementSummary = dis; // show pre-revision disagreement while revising
     persist(f);
-    await revise(f, req);
+    await revise(f, req, digest);
     dis = summarizeDisagreement(f.modelOutputs);
   }
   const done = f.modelOutputs.filter((r) => r.status === "done");
@@ -294,9 +316,9 @@ export function startForecast(raw: unknown): Forecast {
   if (existing) return existing; // idempotent: same id never re-runs
   const target = req.target as ForkEvent;
   const events = new Map<string, ForkEvent>(req.scenario.map((s) => [(s.event as ForkEvent).id, s.event as ForkEvent]));
-  const useClaude = req.engine !== "demo" && claudeAvailable().available;
+  const pool = req.engine === "demo" ? [] : providersFor(req.providers as ProviderMode);
 
-  if (!useClaude) {
+  if (!pool.length) {
     const f = runDemoForecast({
       forecastId: req.forecastId,
       verseId: req.verseId,
@@ -315,7 +337,7 @@ export function startForecast(raw: unknown): Forecast {
     verseId: req.verseId,
     targetEventId: target.id,
     targetOutcome: req.targetOutcome,
-    engine: "claude-cli",
+    engine: pool.length > 1 ? "multi-cli" : pool[0] === "codex" ? "codex-cli" : "claude-cli",
     kind: "MODEL",
     baselineProbability: req.baseline?.value ?? null,
     baselineKind: req.baseline?.kind ?? null,
@@ -324,7 +346,8 @@ export function startForecast(raw: unknown): Forecast {
     aggregation: "",
     modelOutputs: ROLES.map((role) => ({
       role,
-      model: process.env.FORK_CLAUDE_MODEL ?? "sonnet",
+      model: PROVIDER_LABEL[providerFor(role, pool)],
+      provider: providerFor(role, pool),
       status: "queued",
       startedAt: null,
       finishedAt: null,
@@ -343,7 +366,7 @@ export function startForecast(raw: unknown): Forecast {
     error: null,
   };
   persist(f);
-  runClaudeForecast(f, req).catch((e) => {
+  runCliForecast(f, req, pool).catch((e) => {
     f.status = f.modelOutputs.some((r) => r.status === "done") ? "partial" : "failed";
     f.error = (e as Error).message;
     f.ensembleProbability = ensembleMean(f.modelOutputs);
@@ -369,7 +392,7 @@ const NextForkSchema = z.object({
     .max(5),
 });
 
-export async function nextForks(raw: unknown): Promise<{ engine: "claude-cli" | "demo"; suggestions: NextForkSuggestion[] }> {
+export async function nextForks(raw: unknown): Promise<{ engine: "claude-cli" | "codex-cli" | "demo"; suggestions: NextForkSuggestion[] }> {
   const req = z
     .object({
       target: z.any(),
@@ -377,17 +400,20 @@ export async function nextForks(raw: unknown): Promise<{ engine: "claude-cli" | 
       scenario: z.array(ScenarioItemIn),
       candidates: z.array(z.any()).max(40),
       engine: z.enum(["auto", "demo"]).default("auto"),
+      providers: z.enum(["mixed", "claude", "codex"]).default("mixed"),
     })
     .parse(raw);
+  const pool = req.engine === "demo" ? [] : providersFor(req.providers);
   const target = req.target as ForkEvent;
-  if (req.engine === "demo" || !claudeAvailable().available) {
+  if (!pool.length) {
     return {
       engine: "demo",
       suggestions: demoNextForks(target, req.scenario.map((s) => ({ eventId: (s.event as ForkEvent).id, outcome: s.outcome }))),
     };
   }
   const candidates = req.candidates as ForkEvent[];
-  const r = await runClaude<z.infer<typeof NextForkSchema>>({
+  const provider: Provider = pool.includes("claude") ? "claude" : "codex";
+  const r = await runProvider<z.infer<typeof NextForkSchema>>(provider, {
     model: process.env.FORK_CLAUDE_FAST_MODEL ?? process.env.FORK_CLAUDE_MODEL ?? "sonnet",
     system:
       "You help a user explore conditional futures. Identify which unresolved questions would most change the target probability inside the user's hypothetical world.",
@@ -411,5 +437,5 @@ Propose up to 4 questions whose resolution would most move P(target). At most 2 
       return { ...s, eventId: known, swing: ps.length ? Math.max(...ps) - Math.min(...ps) : 0 };
     })
     .sort((a, b) => b.swing - a.swing);
-  return { engine: "claude-cli", suggestions };
+  return { engine: provider === "claude" ? "claude-cli" : "codex-cli", suggestions };
 }

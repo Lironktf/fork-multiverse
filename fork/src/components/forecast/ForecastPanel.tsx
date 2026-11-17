@@ -17,6 +17,15 @@ import { MarketContext } from "./MarketContext";
 
 const ROLE_ORDER: ModelRole[] = ["causal", "empirical", "market", "skeptic"];
 
+/** Which model family produced an analysis — kept visible so numbers stay attributed. */
+export function ProviderTag({ p }: { p: "claude" | "codex" }) {
+  return (
+    <span className="tag tag-custom" style={{ height: 13, fontSize: 8 }} title={p === "claude" ? "Anthropic Claude via claude -p" : "OpenAI Codex via codex exec"}>
+      {p}
+    </span>
+  );
+}
+
 function useElapsed(since: string | null, running: boolean) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -34,7 +43,7 @@ function AnalysisProgress({ f }: { f: Forecast }) {
   const elapsed = useElapsed(f.generatedAt, running);
   const steps = [
     { k: "research", label: "Research", state: f.status === "pending" ? "queued" : f.status === "researching" ? "running" : "done" },
-    ...f.modelOutputs.map((r) => ({ k: r.role, label: `${MODEL_ROLES[r.role].short} · ${MODEL_ROLES[r.role].label}`, state: r.status === "done" ? "done" : r.status })),
+    ...f.modelOutputs.map((r) => ({ k: r.role, label: `${MODEL_ROLES[r.role].short} · ${MODEL_ROLES[r.role].label}${r.provider && r.provider !== "demo" ? ` · ${r.provider}` : ""}`, state: r.status === "done" ? "done" : r.status })),
     ...(f.status === "revising" ? [{ k: "rev", label: "Revision round (arguments only, numbers withheld)", state: "running" }] : []),
   ];
   return (
@@ -53,7 +62,11 @@ function AnalysisProgress({ f }: { f: Forecast }) {
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-[10px] leading-relaxed text-ink-3">Four role-prompted analyses run in parallel through the local Claude CLI. They share a model family, so they are not independent forecasters.</p>
+      <p className="mt-2 text-[10px] leading-relaxed text-ink-3">
+        {f.engine === "multi-cli"
+          ? "Four role-prompted analyses run in parallel — two on Claude (claude -p), two on Codex (codex exec). Different model families, but still not independent forecasters."
+          : `Four role-prompted analyses run in parallel through the local ${f.engine === "codex-cli" ? "Codex" : "Claude"} CLI. They share a model family, so they are not independent forecasters.`}
+      </p>
     </div>
   );
 }
@@ -76,6 +89,7 @@ function AnalystRows({ f }: { f: Forecast }) {
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5 text-[11.5px] text-ink">
                   {MODEL_ROLES[role].label}
+                  {r.provider && r.provider !== "demo" && <ProviderTag p={r.provider} />}
                   {r.revised && <span className="tag tag-model" style={{ height: 13, fontSize: 8 }}>revised</span>}
                   {outlier && <span className="text-[10px] text-warn">outlier</span>}
                 </span>

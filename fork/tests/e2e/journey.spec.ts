@@ -152,7 +152,7 @@ test("19–20 · demo engine without credentials, reduced motion fork", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
   await boot(page);
   const status = await (await page.request.get("/api/status")).json();
-  expect(["claude-cli", "demo"]).toContain(status.engine);
+  expect(["cli", "demo"]).toContain(status.engine);
   await page.click('[data-testid="example-demo-btc-150k-2027"]');
   await addByClick(page, "Stablecoin supply");
   const t0 = Date.now();

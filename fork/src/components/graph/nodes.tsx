@@ -129,6 +129,7 @@ function ForecastNode({ meta }: { meta: Extract<NodeMeta, { kind: "forecast" }> 
       </div>
       <div className="glabel mt-1.5 text-center">
         <div className="text-[10.5px] text-ink-2">{MODEL_ROLES[meta.role].label}</div>
+        {run.provider && run.provider !== "demo" && <div className="num text-[8.5px] uppercase tracking-[0.1em] text-ink-3">{run.provider}</div>}
         {delta !== null && (
           <div className={`num text-[10px] ${delta > 0.005 ? "text-up" : delta < -0.005 ? "text-down" : "text-ink-3"}`}>
             {delta >= 0 ? "+" : "−"}

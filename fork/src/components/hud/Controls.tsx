@@ -13,7 +13,9 @@ import { WalletButton } from "@/components/solana/WalletButton";
 import { useQuery } from "@tanstack/react-query";
 
 function Settings() {
-  const { engineMode, setEngine } = useUniverse(useShallow((s) => ({ engineMode: s.engine, setEngine: s.setEngine })));
+  const { engineMode, setEngine, providers, setProviders } = useUniverse(
+    useShallow((s) => ({ engineMode: s.engine, setEngine: s.setEngine, providers: s.providers, setProviders: s.setProviders })),
+  );
   const reduced = useUI((s) => s.reducedMotion);
   const status = useQuery({ queryKey: ["status"], queryFn: () => fetch("/api/status").then((r) => r.json()), staleTime: 60_000 });
   return (
@@ -21,18 +23,43 @@ function Settings() {
       <div className="meta mb-2">Forecast engine</div>
       <div className="seg w-full" role="radiogroup" aria-label="Forecast engine">
         {(["auto", "demo"] as const).map((m) => (
-          <button key={m} role="radio" aria-checked={engineMode === m} onClick={() => setEngine(m)} className={`flex-1 ${engineMode === m ? "bg-white/[0.08]" : ""}`}>
-            {m === "auto" ? "CLAUDE (LIVE)" : "DEMONSTRATION"}
+          <button key={m} role="radio" aria-checked={engineMode === m} onClick={() => setEngine(m)} className={`flex-1 ${engineMode === m ? "bg-white/[0.08]" : ""}`} data-testid={`engine-${m}`}>
+            {m === "auto" ? "LIVE MODELS" : "DEMONSTRATION"}
           </button>
         ))}
       </div>
+      {engineMode === "auto" && (
+        <>
+          <div className="meta mb-2 mt-3">Analysts</div>
+          <div className="seg w-full" role="radiogroup" aria-label="Analyst model providers">
+            {(["mixed", "claude", "codex"] as const).map((m) => {
+              const ok = !status.data || (m === "mixed" ? status.data.claude && status.data.codex : status.data[m]);
+              return (
+                <button key={m} role="radio" aria-checked={providers === m} disabled={!ok} onClick={() => setProviders(m)} className={`flex-1 ${providers === m ? "bg-white/[0.08]" : ""} disabled:opacity-30`} data-testid={`providers-${m}`}>
+                  {m === "mixed" ? "MIXED" : m === "claude" ? "CLAUDE" : "CODEX"}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
       <p className="mt-2 leading-relaxed text-ink-3">
-        {status.data
-          ? status.data.engine === "claude-cli"
-            ? `Claude CLI detected (${status.data.claudeVersion}). Analysts run on “${status.data.model}” via claude -p.`
-            : "Claude CLI not available on this server — forecasts use labelled demonstration fixtures."
-          : "Checking engine…"}
+        {!status.data
+          ? "Checking engine…"
+          : engineMode === "demo"
+            ? "Labelled demonstration fixtures — instant and deterministic."
+            : status.data.engine === "demo"
+              ? "No model CLI on this server — forecasts fall back to labelled demonstration fixtures."
+              : providers === "mixed"
+                ? "Analysts A & C run on Claude (claude -p), B & D on Codex (codex exec). Two model families — still not independent forecasters."
+                : providers === "claude"
+                  ? `All four analysts on Claude “${status.data.model}” via claude -p.`
+                  : "All four analysts on Codex via codex exec (research uses Codex web search)."}
       </p>
+      <div className="mt-1.5 flex gap-2 text-[10px] text-ink-3">
+        <span className={status.data?.claude ? "text-up/80" : ""}>● claude {status.data?.claude ? "ready" : "missing"}</span>
+        <span className={status.data?.codex ? "text-up/80" : ""}>● codex {status.data?.codex ? "ready" : "missing"}</span>
+      </div>
       <div className="meta mb-2 mt-4">Motion</div>
       <div className="seg w-full" role="radiogroup" aria-label="Motion preference">
         {(["system", "reduce", "full"] as const).map((m) => (

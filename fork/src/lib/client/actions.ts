@@ -46,6 +46,7 @@ export async function requestForecast(verseId: string, target: TargetRef, opts: 
         targetOutcome: target.outcome,
         scenario,
         engine: opts.engine ?? s.engine,
+        providers: s.providers,
         baseline: baselineFor(target, opts.engine ?? s.engine),
       }),
     });
@@ -234,6 +235,7 @@ export async function requestNextForks(verseId: string, target: TargetRef) {
         scenario: world.map((a) => ({ event: s.events[a.eventId], outcome: a.selectedOutcome, layer: "inherited" })),
         candidates,
         engine: s.engine,
+        providers: s.providers,
       }),
     });
     const json = await res.json();

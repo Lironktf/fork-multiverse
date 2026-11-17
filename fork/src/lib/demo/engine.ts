@@ -96,6 +96,7 @@ export function runDemoForecast(opts: {
     return {
       role,
       model: "demo-fixture",
+      provider: "demo",
       status: "done",
       startedAt: now,
       finishedAt: now,

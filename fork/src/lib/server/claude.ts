@@ -60,6 +60,7 @@ export interface ClaudeCall {
 }
 
 export interface ClaudeResult<T> {
+  provider?: "claude";
   structured: T | null;
   text: string;
   model: string;

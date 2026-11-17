@@ -9,6 +9,9 @@
  */
 import { z } from "zod";
 
+export const ProviderMode = z.enum(["mixed", "claude", "codex"]);
+export type ProviderMode = z.infer<typeof ProviderMode>;
+
 export const ProbabilityKind = z.enum(["MARKET", "MODEL", "DEMO"]);
 export type ProbabilityKind = z.infer<typeof ProbabilityKind>;
 
@@ -173,7 +176,8 @@ export type AnalystOutput = z.infer<typeof AnalystOutput>;
 
 export const ModelRun = z.object({
   role: ModelRole,
-  model: z.string(), // e.g. "claude-sonnet (claude -p)" or "demo-fixture"
+  model: z.string(), // e.g. "claude-sonnet-5-5 via claude -p" or "demo-fixture"
+  provider: z.enum(["claude", "codex", "demo"]).optional(),
   status: z.enum(["queued", "running", "done", "failed"]),
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
@@ -205,7 +209,7 @@ export const Forecast = z.object({
   verseId: z.string(),
   targetEventId: z.string(),
   targetOutcome: z.string(),
-  engine: z.enum(["claude-cli", "demo"]),
+  engine: z.enum(["claude-cli", "codex-cli", "multi-cli", "demo"]),
   kind: ProbabilityKind, // MODEL or DEMO
   baselineProbability: z.number().nullable(),
   baselineKind: ProbabilityKind.nullable(),

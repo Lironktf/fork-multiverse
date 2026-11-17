@@ -6,7 +6,7 @@
  */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { Assumption, Forecast, ForkEvent, TargetRef, Verse } from "@/lib/domain/types";
+import type { Assumption, Forecast, ForkEvent, ProviderMode, TargetRef, Verse } from "@/lib/domain/types";
 import { targetKey } from "@/lib/domain/types";
 import { ALL_DEMO_EVENTS, DEMO_TARGETS } from "@/lib/demo/events";
 import { ORIGIN_ID, cumulativeAssumptions, hash, makeOrigin, placeChild, verseHue, childrenOf } from "@/lib/domain/verse";
@@ -30,6 +30,9 @@ interface UniverseState {
   started: boolean;
   mode: Mode;
   engine: "auto" | "demo";
+  /** which model CLIs the analysts use when engine=auto */
+  providers: ProviderMode;
+  setProviders: (p: ProviderMode) => void;
   events: Record<string, ForkEvent>;
   verses: Record<string, Verse>;
   forecasts: Record<string, Forecast>;
@@ -96,6 +99,8 @@ export const useUniverse = create<UniverseState>()(
       started: false,
       mode: "explore",
       engine: "auto",
+      providers: "mixed",
+      setProviders: (providers) => set({ providers }),
       events: initialEvents(),
       verses: { [ORIGIN_ID]: makeOrigin() },
       forecasts: {},
@@ -239,6 +244,7 @@ export const useUniverse = create<UniverseState>()(
         started: s.started,
         mode: s.mode,
         engine: s.engine,
+        providers: s.providers,
         events: s.events,
         verses: s.verses,
         forecasts: s.forecasts,

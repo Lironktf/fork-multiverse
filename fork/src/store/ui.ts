@@ -39,7 +39,7 @@ interface UIState {
   toasts: { id: number; tone: "info" | "warn" | "error"; text: string }[];
   announce: string;
   /** "verseId::targetKey" -> next-fork analysis */
-  nextForks: Record<string, { status: "loading" | "done" | "error"; engine?: "claude-cli" | "demo"; suggestions: NextForkSuggestion[]; error?: string }>;
+  nextForks: Record<string, { status: "loading" | "done" | "error"; engine?: "claude-cli" | "codex-cli" | "demo"; suggestions: NextForkSuggestion[]; error?: string }>;
 
   set: (p: Partial<UIState>) => void;
   toast: (text: string, tone?: "info" | "warn" | "error") => void;

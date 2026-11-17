@@ -6,8 +6,8 @@ Choose an event. Change the assumptions. Explore what happens next.
 You pick a target (a live Gemini prediction market, or a defined hypothetical),
 drag other events into a basket, choose how each one resolves, and press
 **FORK REALITY**. The graph converges, ruptures and travels to a new *Verse*: a
-saved hypothetical world where four AI analysts estimate the target under your
-assumptions. You can name it, inspect where the analysts disagree, fork again,
+saved hypothetical world where four AI analysts, drawn from two model families
+(Claude and Codex), estimate the target under your assumptions. You can name it, inspect where the analysts disagree, fork again,
 and compare worlds side by side.
 
 ![Welcome](docs/screenshots/01-welcome.png)
@@ -25,7 +25,11 @@ npm run dev          # http://localhost:3000
 No API keys are required.
 
 - **Live market data:** Gemini's public Prediction Markets API (no key needed for reads).
-- **Model analysis:** the local **Claude Code CLI** (`claude -p`), authenticated with your Claude subscription. If `claude` is not on the server's `PATH`, FORK switches to its labelled **demonstration engine** on its own.
+- **Model analysis:** two local CLIs, each logged in with your own subscription:
+  - **Claude Code** (`claude -p`, Claude subscription)
+  - **OpenAI Codex** (`codex exec`, ChatGPT login)
+
+  By default the analysts are **mixed**: A and C run on Claude, B and D on Codex. *Settings → Analysts* switches to Claude-only or Codex-only. If neither CLI is installed, FORK switches to its labelled **demonstration engine** on its own.
 - **Demo engine on demand:** choose *Settings → Forecast engine → DEMONSTRATION* to get instant, deterministic results.
 
 Production:
@@ -52,7 +56,12 @@ All are optional. See [`.env.example`](.env.example).
 | `FORK_CLAUDE_MODEL` | `sonnet` | Model alias for analysts and the revision round |
 | `FORK_CLAUDE_RESEARCH_MODEL` | = model | Model for the WebSearch research step |
 | `FORK_CLAUDE_FAST_MODEL` | = model | Model for "Find the next fork" |
-| `FORK_CLAUDE_CONCURRENCY` | `4` | Max parallel CLI processes |
+| `FORK_CLAUDE_CONCURRENCY` | `4` | Max parallel `claude` processes |
+| `FORK_CODEX_BIN` | `codex` | Path to the Codex CLI (must be logged in: `codex login`) |
+| `FORK_CODEX_MODEL` | Codex default | Model for Codex analysts (`-m`) |
+| `FORK_CODEX_EFFORT` | `low` | `model_reasoning_effort` for Codex |
+| `FORK_CODEX_CONCURRENCY` | `4` | Max parallel `codex` processes |
+| `FORK_CODEX` | `1` | `0` disables Codex even if installed |
 | `FORK_RESEARCH` | `1` | `0` skips web research |
 | `FORK_REVISION` | `auto` | Revision round: `auto` (only on significant disagreement), `1` (always), `0` (never) |
 | `FORK_DB_PATH` | `.data/fork.sqlite` | SQLite file (forecasts, universe mirror, research cache) |
@@ -74,7 +83,7 @@ illustrative). Event sources are tagged **Gemini**, **Demo**, **Custom** or
 | --- | --- |
 | Gemini Prediction Markets (events, contracts, best bid/ask, last trade, volume, expiry, resolution text) | **Live.** Fetched server-side from documented public endpoints, cached 90s with stale-while-revalidate, throttled to 1 request/s. Missing quotes stay missing. Nothing is substituted. |
 | Implied probability | **Live, derived:** mid of best bid/ask; last trade if one side is empty; no estimate if only one side quotes. Binary NO is the complement of the YES book. |
-| Four-analyst forecasting (`claude -p`) | **Live** when the CLI is present. Research (WebSearch, cited) → 4 role analysts in parallel, blind to each other → disagreement analysis → optional revision (arguments only, numbers withheld) → equal-weight mean → zod validation → SQLite. Verified end to end (see Test results). |
+| Four-analyst forecasting (`claude -p` + `codex exec`) | **Live** when either CLI is present. Research (Claude WebSearch, or Codex live web search in Codex-only mode, cited) → 4 role analysts in parallel, blind to each other → disagreement analysis → optional revision (arguments only, numbers withheld; each analyst revises on its own provider) → equal-weight mean → zod validation → SQLite. A failed analyst retries once on the *other* provider and is labelled with the model that actually answered. Every analyst row and graph node shows its provider. Verified end to end in mixed, Claude-only and Codex-only modes. |
 | Find the next fork | **Live** (model-ranked by estimated swing P(target \| outcome)); **demo** ranking from fixtures in demo mode. Not a formal information-gain calculation, and the UI says so. |
 | Demo engine and demo library | **Demonstration.** 4 targets and 14 hypothetical events with authored, illustrative log-odds effects. Labelled DEMO everywhere. Live events added to a demo-engine scenario are explicitly ignored, never invented. |
 | Verse persistence | **Live:** localStorage (primary) plus a debounced mirror to server SQLite. Forecasts are immutable once complete; reopening a Verse shows the original analysis. |
@@ -113,7 +122,8 @@ fork/
   src/lib/domain/           zod schemas (Event, MarketSnapshot, Assumption, Verse,
                             Forecast, AnalystOutput…), Verse geometry/naming,
                             market math, Gemini normalisation (pure, unit-tested)
-  src/lib/server/           claude.ts (CLI runner, isolation flags, concurrency gate),
+  src/lib/server/           providers.ts (registry, role→provider assignment),
+                            claude.ts / codex.ts (CLI runners, isolation, concurrency),
                             engine.ts (orchestrator), gemini.ts (cache + 1 rps gate),
                             db.ts (node:sqlite)
   src/lib/demo/             demonstration library + deterministic demo engine
@@ -147,8 +157,18 @@ fork/
   open. Semantic zoom keeps Verse landmarks legible in the overview.
 - **`claude -p` isolation:** `--setting-sources ""`, a replacement `--system-prompt`,
   `--tools ""` (WebSearch only for research), `--no-session-persistence` and
-  `--json-schema` for structured output. Each output is validated again with zod.
-  Citations are only kept when the URL came from the research step.
+  `--json-schema` for structured output.
+- **`codex exec` isolation:** an empty temporary working directory (no
+  AGENTS.md is discovered), `--sandbox read-only --ephemeral --ignore-rules`,
+  `--output-schema` (made strict: closed objects with every property required),
+  and `-c web_search="live"` only for research.
+- **Shared rules:** each output is validated again with zod. Citations are only
+  kept when the URL came from the research step.
+- **Mixed by default** (A and C on Claude · B and D on Codex). The skeptic never
+  shares a family with the causal analyst. In testing, the families disagreed
+  sharply on the same scenario and research: for BTC > $150k given Fed cuts and
+  no recession, Claude analysts gave 12–17% and Codex analysts 43–48%. Mixed mode
+  surfaces that disagreement instead of hiding it.
 - **Equal weights.** There is no documented basis for weighting roles, so the
   aggregate is a plain mean, stated in the UI. The disagreement thresholds
   (15pp range, 12pp outlier) are display choices, labelled as such in code.
@@ -203,7 +223,7 @@ Also verified manually:
 - Solana devnet attestation is implemented but was not confirmed onchain from this server (faucet closed / RPC rate limits), and no wallet extension exists in headless tests.
 - FORK Positions is a source-level design only.
 - Live analysis takes about 1–3 minutes (research plus four parallel CLI runs). The UI shows real step-by-step progress rather than blocking. Analyses run inside the Next.js server process: a restart mid-run marks that job as lost rather than resuming it.
-- The four analysts share one model family. Treat their spread as disagreement between prompts, not between independent forecasters.
+- Mixed mode uses two model families, but they are still not independent forecasters (shared research digest, overlapping training data). Single-provider modes share one family entirely.
 - The demo library's baselines are illustrative. Research during testing put BTC near $65k in mid-2026, far from what the 35% demo baseline implies.
 - Gemini categorical events: each outcome is a separate YES contract. FORK treats an assumption on a categorical event as choosing one outcome, so two outcomes of the same event can't both be assumed.
 - The server mirror of the universe is keyed by an anonymous browser id. There is no restore-from-server UI if browser storage is wiped.
