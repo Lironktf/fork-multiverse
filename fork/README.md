@@ -163,7 +163,7 @@ Icons: **Lucide** (ISC). See [NOTICES.md](NOTICES.md).
 
 ## Test results
 
-Run on 2026-11-17 against `next dev`, Chromium 1243 headless:
+Run on 2026-11-17, headless Chromium 1243. Results were identical against `next dev` and the production build (`next build && next start`):
 
 ```
 15 passed (59.4s)
