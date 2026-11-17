@@ -1,0 +1,256 @@
+import "server-only";
+/**
+ * Gemini Prediction Markets — public REST adapter.
+ *
+ * Endpoints (unauthenticated, documented at
+ * https://developer.gemini.com/prediction-markets-spec):
+ *   GET /v1/prediction-markets/events?status=&category=&search=&limit=&offset=
+ *   GET /v1/prediction-markets/events/{eventTicker}
+ *   GET /v1/prediction-markets/categories
+ *
+ * Rate limit (https://developer.gemini.com/rate-limit): 120 req/min, "recommend
+ * that you do not exceed 1 request per second". We serialise upstream calls
+ * through a 1 req/s gate and cache responses for 45s, so UI traffic never maps
+ * 1:1 onto upstream traffic. Prices are never synthesised: missing quotes stay
+ * null and are labelled by `dataQuality`.
+ */
+import type { EventCategory, ForkEvent, MarketSnapshot } from "@/lib/domain/types";
+
+const BASE = process.env.GEMINI_API_BASE ?? "https://api.gemini.com";
+const TTL_MS = 45_000;
+const MIN_GAP_MS = 1_000;
+
+type Cached = { at: number; value: unknown };
+const cache = new Map<string, Cached>();
+const inflight = new Map<string, Promise<unknown>>();
+let gate: Promise<void> = Promise.resolve();
+let lastCall = 0;
+
+async function throttle() {
+  const prev = gate;
+  let release!: () => void;
+  gate = new Promise((r) => (release = r));
+  await prev;
+  const wait = Math.max(0, lastCall + MIN_GAP_MS - Date.now());
+  if (wait) await new Promise((r) => setTimeout(r, wait));
+  lastCall = Date.now();
+  release();
+}
+
+export class GeminiUnavailable extends Error {}
+
+async function getJson<T>(path: string): Promise<{ value: T; fetchedAt: number; cached: boolean }> {
+  const hit = cache.get(path);
+  if (hit && Date.now() - hit.at < TTL_MS) return { value: hit.value as T, fetchedAt: hit.at, cached: true };
+  if (inflight.has(path)) {
+    await inflight.get(path);
+    const h = cache.get(path)!;
+    return { value: h.value as T, fetchedAt: h.at, cached: true };
+  }
+  const p = (async () => {
+    await throttle();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8_000);
+    try {
+      const res = await fetch(BASE + path, { signal: ctrl.signal, headers: { accept: "application/json" }, cache: "no-store" });
+      if (!res.ok) throw new GeminiUnavailable(`Gemini responded ${res.status}`);
+      const json = await res.json();
+      cache.set(path, { at: Date.now(), value: json });
+      return json;
+    } catch (e) {
+      // serve stale data rather than nothing, but never older than 10 min
+      if (hit && Date.now() - hit.at < 600_000) return hit.value;
+      throw e instanceof GeminiUnavailable ? e : new GeminiUnavailable((e as Error).message);
+    } finally {
+      clearTimeout(timer);
+      inflight.delete(path);
+    }
+  })();
+  inflight.set(path, p);
+  await p;
+  const h = cache.get(path) ?? hit!;
+  return { value: h.value as T, fetchedAt: h.at, cached: false };
+}
+
+/* ---------- raw shapes (only fields we read) ---------- */
+interface RawPrices {
+  buy?: { yes?: string | null; no?: string | null };
+  sell?: { yes?: string | null; no?: string | null };
+  bestBid?: string | null;
+  bestAsk?: string | null;
+  lastTradePrice?: string | null;
+}
+interface RawContract {
+  id: string;
+  label: string;
+  ticker?: string;
+  instrumentSymbol?: string;
+  status?: string;
+  prices?: RawPrices;
+  expiryDate?: string | null;
+  description?: unknown;
+  termsAndConditionsUrl?: string;
+}
+interface RawEvent {
+  id: string;
+  title: string;
+  slug?: string;
+  description?: string | null;
+  type: "binary" | "categorical";
+  category?: string;
+  subcategory?: unknown;
+  ticker: string;
+  status: string;
+  expiryDate?: string | null;
+  liquidity?: string | null;
+  volume?: string | null;
+  tags?: unknown;
+  contracts?: RawContract[];
+}
+
+const num = (s: string | null | undefined) => {
+  if (s === null || s === undefined || s === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+};
+
+const CATEGORY_MAP: Record<string, EventCategory> = {
+  crypto: "crypto",
+  economics: "macro",
+  politics: "politics",
+  tech: "tech",
+  business: "business",
+  commodities: "energy",
+  culture: "culture",
+  weather: "other",
+  sports: "other",
+  live: "other",
+};
+
+/** Contract descriptions are rich-text JSON; flatten to plain text. */
+function richText(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const n = node as { value?: string; content?: unknown[] };
+  return (n.value ?? "") + (Array.isArray(n.content) ? n.content.map(richText).join("") : "");
+}
+
+export function snapshotFromPrices(eventId: string, outcome: string, p: RawPrices | undefined, at: string, volumeUsd: number | null, liquidityUsd: number | null): MarketSnapshot {
+  const bid = num(p?.bestBid);
+  const ask = num(p?.bestAsk);
+  const last = num(p?.lastTradePrice);
+  let implied: number | null = null;
+  let dataQuality: MarketSnapshot["dataQuality"] = "no-quote";
+  if (bid !== null && ask !== null) {
+    implied = (bid + ask) / 2;
+    dataQuality = "two-sided";
+  } else if (last !== null) {
+    implied = last;
+    dataQuality = "last-trade-only";
+  } else if (bid !== null || ask !== null) {
+    dataQuality = "one-sided"; // a single side is a bound, not an estimate
+  }
+  return {
+    eventId,
+    source: "gemini",
+    timestamp: at,
+    outcome,
+    bid,
+    ask,
+    lastPrice: last,
+    impliedProbabilityEstimate: implied,
+    liquidityMetadata: { volumeUsd, liquidityUsd, spread: bid !== null && ask !== null ? ask - bid : null },
+    dataQuality,
+  };
+}
+
+/**
+ * Normalise a Gemini event.
+ *  - binary  → outcomes YES / NO from the single contract (NO = 1 − YES quotes are NOT derived; we only report YES-side quotes and label NO from the same book)
+ *  - categorical → outcomes are contract labels; each contract is its own YES/NO market, so the snapshot per outcome is that contract's YES side.
+ */
+export function normalizeEvent(raw: RawEvent, fetchedAt: number): ForkEvent {
+  const at = new Date(fetchedAt).toISOString();
+  const id = `gemini:${raw.ticker}`;
+  const volumeUsd = num(raw.volume ?? null);
+  const liquidityUsd = num(raw.liquidity ?? null);
+  const contracts = (raw.contracts ?? []).filter((c) => c.status !== "settled" && c.status !== "invalid");
+  const first = contracts[0];
+  const resolution = first ? richText(first.description).trim() : "";
+  const base = {
+    id,
+    title: raw.title,
+    description: (raw.description ?? "").toString(),
+    category: CATEGORY_MAP[(raw.category ?? "").toLowerCase()] ?? "other",
+    source: "gemini" as const,
+    externalMarketId: raw.ticker,
+    resolutionCriteria: resolution,
+    resolutionDate: raw.expiryDate ?? null,
+    fetchedAt: at,
+  };
+  if (raw.type === "binary" || contracts.length <= 1) {
+    const yes = snapshotFromPrices(id, "YES", first?.prices, at, volumeUsd, liquidityUsd);
+    return {
+      ...base,
+      eventType: "binary",
+      possibleOutcomes: ["YES", "NO"],
+      metadata: {
+        url: `https://www.gemini.com/predictions/${raw.ticker}`,
+        ticker: raw.ticker,
+        contractIds: first ? { YES: first.id } : undefined,
+        volumeUsd,
+        tags: [],
+      },
+      snapshots: [yes],
+    };
+  }
+  return {
+    ...base,
+    eventType: "categorical",
+    possibleOutcomes: contracts.map((c) => c.label),
+    metadata: {
+      url: `https://www.gemini.com/predictions/${raw.ticker}`,
+      ticker: raw.ticker,
+      contractIds: Object.fromEntries(contracts.map((c) => [c.label, c.id])),
+      volumeUsd,
+      tags: [],
+    },
+    snapshots: contracts.map((c) => snapshotFromPrices(id, c.label, c.prices, at, volumeUsd, liquidityUsd)),
+  };
+}
+
+// Short-dated intraday contracts (e.g. "BTC price today at 2pm") are noise for
+// scenario analysis; we hide events expiring within 36h by default.
+const SHORT_HORIZON_MS = 36 * 3600_000;
+
+export async function searchGeminiEvents(opts: { q?: string; category?: string; limit?: number }) {
+  const params = new URLSearchParams({ status: "active", limit: String(opts.limit ?? 200) });
+  if (opts.q) params.set("search", opts.q);
+  if (opts.category) params.set("category", opts.category);
+  const { value, fetchedAt, cached } = await getJson<{ data: RawEvent[]; pagination: { total: number } }>(
+    `/v1/prediction-markets/events?${params}`,
+  );
+  const now = Date.now();
+  const events = value.data
+    .filter((e) => e.category?.toLowerCase() !== "sports")
+    .filter((e) => !e.expiryDate || new Date(e.expiryDate).getTime() - now > SHORT_HORIZON_MS)
+    .map((e) => normalizeEvent(e, fetchedAt));
+  // collapse repeating series (e.g. one "BTC price on <date>" per date) to the
+  // highest-volume instance so the library isn't flooded with near-duplicates
+  const bySeries = new Map<string, ForkEvent>();
+  for (const e of events) {
+    const key = e.title.replace(/\d+/g, "#");
+    const prev = bySeries.get(key);
+    if (!prev || (e.metadata.volumeUsd ?? 0) > (prev.metadata.volumeUsd ?? 0)) bySeries.set(key, e);
+  }
+  return { events: [...bySeries.values()], fetchedAt: new Date(fetchedAt).toISOString(), cached, total: value.pagination?.total ?? events.length };
+}
+
+export async function getGeminiEvent(ticker: string) {
+  const { value, fetchedAt } = await getJson<RawEvent>(`/v1/prediction-markets/events/${encodeURIComponent(ticker)}`);
+  return normalizeEvent(value, fetchedAt);
+}
+
+export async function getGeminiCategories() {
+  const { value } = await getJson<{ categories: string[] }>(`/v1/prediction-markets/categories?status=active`);
+  return value.categories.filter((c) => !["Sports", "Live"].includes(c));
+}
