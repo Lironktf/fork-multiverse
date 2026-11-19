@@ -210,6 +210,11 @@ export function DiscoveryPanel({ onCollapse }: { onCollapse?: () => void }) {
               <div className="mx-2 my-1 rounded-md border border-warn/25 bg-warn/[0.04] px-2.5 py-2 text-[11px] text-warn/90">Gemini is unreachable. No live prices are shown — nothing is substituted.</div>
             )}
             {g.header.startsWith("Live") && live.isLoading && <div className="px-3 py-3 text-[11px] text-ink-3">Fetching live markets…</div>}
+            {g.header.startsWith("Live") && q && g.items.length > 0 && g.items.every((e) => e.metadata.related) && (
+              <div className="px-3 pb-1 pt-1.5 text-[10.5px] leading-snug text-ink-3" data-testid="related-note">
+                No Gemini market mentions “{q}” directly. Closest related markets:
+              </div>
+            )}
             {g.items.length === 0 && !(g.header.startsWith("Live") && live.isLoading) && (
               <div className="px-3 py-2 text-[11px] text-ink-3">{g.header.startsWith("Custom")
                   ? "None yet — use ✦ to define one."

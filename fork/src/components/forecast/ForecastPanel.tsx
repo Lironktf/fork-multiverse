@@ -14,6 +14,7 @@ import { ORIGIN_ID } from "@/lib/domain/verse";
 import { ProbabilityDisplay, RangeTrack } from "./ProbabilityDisplay";
 import { Onchain } from "@/components/solana/Onchain";
 import { MarketContext } from "./MarketContext";
+import { OddsHistory } from "./OddsHistory";
 
 const ROLE_ORDER: ModelRole[] = ["causal", "empirical", "market", "skeptic"];
 
@@ -414,6 +415,7 @@ export function ForecastPanel() {
                   </span>
                 </p>
               )}
+              {events[target.eventId]?.source === "gemini" && <OddsHistory event={events[target.eventId]} outcome={target.outcome} forecast={f} isOrigin={isOrigin} />}
               {f && (f.modelOutputs.some((r) => finalProbability(r) !== null) ? <div className="mt-3"><RangeTrack forecast={f} onPick={(r) => useUI.getState().set({ inspectRole: r })} /></div> : null)}
               {analyzing && <AnalysisProgress f={f!} />}
               {f?.status === "failed" && (

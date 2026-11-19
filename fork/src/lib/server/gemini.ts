@@ -193,3 +193,52 @@ export async function getGeminiCategories() {
   const { value } = await getJson<{ categories: string[] }>(`/v1/prediction-markets/categories?status=active`);
   return value.categories.filter((c) => !["Sports", "Live"].includes(c));
 }
+
+/* ---------------- Odds over time ---------------- */
+
+/**
+ * Price history for one outcome's contract, from Gemini's public candles endpoint
+ * `GET /v2/candles/{instrumentSymbol}/{timeframe}`. That endpoint is documented for
+ * spot symbols; the prediction-markets docs don't list it, but it accepts contract
+ * `instrumentSymbol`s (verified 2026-11-19: GEMI-CRYPTOSTRUCT26-2027 → 266 daily
+ * candles back to listing). Rows are [timeMs, open, high, low, close, volume], newest first.
+ * Depth measured that day: 15m ≈ 14d, 1hr ≈ 61d, 6hr ≈ 91d, 1day = since listing.
+ */
+export const HISTORY_RANGES = {
+  "1D": { tf: "15m", ms: 86_400_000 },
+  "1W": { tf: "1hr", ms: 7 * 86_400_000 },
+  "1M": { tf: "6hr", ms: 30 * 86_400_000 },
+  ALL: { tf: "1day", ms: Infinity },
+} as const;
+export type HistoryRange = keyof typeof HISTORY_RANGES;
+
+export async function getOutcomeHistory(ticker: string, outcome: string, range: HistoryRange) {
+  const { value: raw } = await getJson<RawEvent>(`/v1/prediction-markets/events/${encodeURIComponent(ticker)}`);
+  const contracts = (raw.contracts ?? []).filter((c) => c.status !== "settled" && c.status !== "invalid");
+  const binary = raw.type === "binary" || contracts.length <= 1;
+  // binary events quote the YES contract; NO is its complement (inverted below)
+  const contract = binary ? contracts[0] : contracts.find((c) => c.label === outcome);
+  if (!contract?.instrumentSymbol) throw new GeminiUnavailable(`no contract symbol for ${ticker} / ${outcome}`);
+  const { tf, ms } = HISTORY_RANGES[range];
+  const { value: rows, fetchedAt } = await getJson<number[][]>(`/v2/candles/${encodeURIComponent(contract.instrumentSymbol)}/${tf}`);
+  if (!Array.isArray(rows)) throw new GeminiUnavailable("unexpected candles payload");
+  const since = Date.now() - ms;
+  const invert = binary && outcome === "NO";
+  const points = rows
+    .filter((r) => Array.isArray(r) && r.length >= 6 && r[0] >= since && Number.isFinite(r[4]))
+    .map((r) => ({ t: r[0], p: invert ? 1 - r[4] : r[4], v: r[5] }))
+    .sort((a, b) => a.t - b.t);
+  // Before a contract's first trade Gemini emits flat placeholder candles (e.g. 1.00 with 0 volume
+  // from listing day). They are not prices anyone paid, so the line starts at the first traded candle.
+  const firstTraded = points.findIndex((p) => p.v > 0);
+  const trimmed = firstTraded > 0 ? points.slice(firstTraded) : points;
+  return {
+    symbol: contract.instrumentSymbol,
+    timeframe: tf,
+    range,
+    inverted: invert,
+    points: trimmed,
+    trimmedBeforeFirstTrade: firstTraded > 0 ? firstTraded : 0,
+    fetchedAt: new Date(fetchedAt).toISOString(),
+  };
+}

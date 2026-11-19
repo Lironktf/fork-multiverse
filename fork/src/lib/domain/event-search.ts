@@ -116,7 +116,7 @@ export function searchEvents(events: RawEvent[], q: string, opts: { minDirect?: 
     }
     // the whole phrase in the title beats scattered words
     if (all && terms.length > 1 && f.title.includes(terms.join(" "))) score += 5;
-    if (all) direct.push({ event: e, score, match: whys.includes("title") ? "title" : `matched ${[...new Set(whys)].join(", ").replace("resolution rules", "in resolution rules")}`, related: false });
+    if (all) direct.push({ event: e, score, match: whys.includes("title") ? "title" : `matched ${[...new Set(whys)].join(", ")}`, related: false });
   }
 
   const minDirect = opts.minDirect ?? 4;
@@ -131,7 +131,7 @@ export function searchEvents(events: RawEvent[], q: string, opts: { minDirect?: 
           // related matches must be visible to the user (title, outcome or topic), not buried in rules text
           if (!s || s.why === "resolution rules") continue;
           seen.add(e.ticker);
-          related.push({ event: e, score: s.score / 4, match: `related to “${t}” — ${s.why} mentions “${r}”`, related: true });
+          related.push({ event: e, score: s.score / 4, match: `related · “${r}” in ${s.why}`, related: true });
         }
       }
     }

@@ -71,7 +71,7 @@ export const EventRow = memo(function EventRow({
           {event.source === "gemini" && event.metadata.volumeUsd != null && <span className="num">· vol {fmtUsd(event.metadata.volumeUsd)}</span>}
         </div>
         {event.metadata.match && event.metadata.match !== "title" && (
-          <div className={`mt-1 line-clamp-1 text-[10px] ${event.metadata.related ? "text-ink-3 italic" : "text-accent/75"}`} data-testid="match-reason">
+          <div className={`mt-1 line-clamp-2 text-[10px] ${event.metadata.related ? "text-ink-3 italic" : "text-accent/75"}`} title={event.metadata.match} data-testid="match-reason">
             {event.metadata.match}
           </div>
         )}
