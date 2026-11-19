@@ -157,7 +157,6 @@ const ResearchSchema = z.object({
 
 async function researchWith(req: ForecastRequest, provider: Provider): Promise<ResearchDigest | null> {
   const target = req.target as ForkEvent;
-  const key = JSON.stringify([target.id, req.targetOutcome, req.scenario.map((s) => [(s.event as ForkEvent).id, s.outcome])]);
   const r = await runProvider<ResearchDigest>(provider, {
     system:
       "You are a research assistant for a forecasting team. Use web search to gather CURRENT, citable facts. Never fabricate URLs: every url must be a page you actually found via search.",
@@ -534,7 +533,11 @@ Propose up to 4 questions whose resolution would most move P(target). At most 2 
   const suggestions = [...merged.values()]
     .sort((a, b) => b.proposedBy!.length - a.proposedBy!.length || b.swing - a.swing)
     .slice(0, 6)
-    .map(({ n: _n, ...rest }) => rest);
+    .map((x) => {
+      const { n, ...rest } = x;
+      void n;
+      return rest;
+    });
   const used = ok.map((x) => x.p);
   return { engine: used.length > 1 ? "multi-cli" : (`${used[0]}-cli` as "claude-cli" | "codex-cli" | "grok-cli"), providers: used, suggestions };
 }

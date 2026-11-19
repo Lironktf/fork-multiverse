@@ -78,6 +78,10 @@ export const ForkEvent = z.object({
       proposedBy: z.string().optional(),
       volumeUsd: z.number().nullable().optional(),
       tags: z.array(z.string()).optional(),
+      /** search only: why this event matched the query (e.g. outcome “Pedro Sánchez”) */
+      match: z.string().optional(),
+      /** search only: matched through a related topic, not the query itself */
+      related: z.boolean().optional(),
     })
     .default({}),
   /** Latest snapshots per outcome (only for live market events) */

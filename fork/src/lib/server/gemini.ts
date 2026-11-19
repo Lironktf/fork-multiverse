@@ -16,6 +16,7 @@ import "server-only";
  */
 import type { ForkEvent } from "@/lib/domain/types";
 import { normalizeEvent, type RawEvent } from "@/lib/domain/gemini-normalize";
+import { searchEvents } from "@/lib/domain/event-search";
 
 export { normalizeEvent, snapshotFromPrices } from "@/lib/domain/gemini-normalize";
 
@@ -100,37 +101,79 @@ function shape(raw: RawEvent[], fetchedAt: number) {
 }
 
 /** Collapse repeating series (one "BTC price on <date>" per date) to the highest-volume instance. */
-function collapseSeries(events: ForkEvent[]) {
+function collapseSeries(events: ForkEvent[], keepOrder = false) {
   const bySeries = new Map<string, ForkEvent>();
   for (const e of events) {
     const key = e.title.replace(/\d+/g, "#");
     const prev = bySeries.get(key);
-    if (!prev || (e.metadata.volumeUsd ?? 0) > (prev.metadata.volumeUsd ?? 0)) bySeries.set(key, e);
+    if (!prev || (!keepOrder && (e.metadata.volumeUsd ?? 0) > (prev.metadata.volumeUsd ?? 0))) bySeries.set(key, e);
   }
-  return [...bySeries.values()].sort((a, b) => (b.metadata.volumeUsd ?? 0) - (a.metadata.volumeUsd ?? 0));
+  const out = [...bySeries.values()];
+  // search results arrive ranked by relevance; browse is ranked by volume
+  return keepOrder ? out : out.sort((a, b) => (b.metadata.volumeUsd ?? 0) - (a.metadata.volumeUsd ?? 0));
 }
 
-/**
- * Search uses the documented `search` filter (one upstream call). Browsing
- * (no query) walks the non-sports categories, because an unfiltered list is
- * dominated by sports and intraday contracts.
- */
-export async function searchGeminiEvents(opts: { q?: string; category?: string; limit?: number }) {
-  if (opts.q) {
-    const params = new URLSearchParams({ status: "active", limit: String(opts.limit ?? 100), search: opts.q });
-    if (opts.category) params.set("category", opts.category);
-    const { value, fetchedAt, cached } = await getJson<{ data: RawEvent[]; pagination: { total: number } }>(`/v1/prediction-markets/events?${params}`);
-    return { events: collapseSeries(shape(value.data, fetchedAt)), fetchedAt: new Date(fetchedAt).toISOString(), cached, total: value.pagination?.total ?? 0 };
-  }
-  const cats = opts.category ? [opts.category] : BROWSE_CATEGORIES;
+/** Every active non-sports event, one request per category (each is < 100 events today; limit 500 for headroom). */
+async function catalog(cats: string[]) {
   const results = await Promise.allSettled(
-    cats.map((c) => getJson<{ data: RawEvent[] }>(`/v1/prediction-markets/events?${new URLSearchParams({ status: "active", limit: "100", category: c })}`)),
+    cats.map((c) => getJson<{ data: RawEvent[] }>(`/v1/prediction-markets/events?${new URLSearchParams({ status: "active", limit: "500", category: c })}`)),
   );
   const ok = results.filter((r): r is PromiseFulfilledResult<{ value: { data: RawEvent[] }; fetchedAt: number; cached: boolean }> => r.status === "fulfilled");
   if (!ok.length) throw new GeminiUnavailable((results[0] as PromiseRejectedResult).reason?.message ?? "all category requests failed");
-  const events = ok.flatMap((r) => shape(r.value.value.data, r.value.fetchedAt));
-  const oldest = Math.min(...ok.map((r) => r.value.fetchedAt));
-  return { events: collapseSeries(events), fetchedAt: new Date(oldest).toISOString(), cached: ok.every((r) => r.value.cached), total: events.length, partial: ok.length < cats.length };
+  return {
+    batches: ok.map((r) => ({ raw: r.value.value.data, fetchedAt: r.value.fetchedAt })),
+    oldest: Math.min(...ok.map((r) => r.value.fetchedAt)),
+    cached: ok.every((r) => r.value.cached),
+    partial: ok.length < cats.length,
+  };
+}
+
+/**
+ * Search is ranked full-text over the whole catalog (title, outcome labels, tags,
+ * resolution rules — see domain/event-search.ts), merged with Gemini's own
+ * `search` filter (title-only, but it also reaches categories we don't browse).
+ * Browsing (no query) walks the non-sports categories, because an unfiltered
+ * list is dominated by sports and intraday contracts.
+ */
+export async function searchGeminiEvents(opts: { q?: string; category?: string; limit?: number }) {
+  const cats = opts.category ? [opts.category] : BROWSE_CATEGORIES;
+  if (opts.q) {
+    const params = new URLSearchParams({ status: "active", limit: String(opts.limit ?? 100), search: opts.q });
+    if (opts.category) params.set("category", opts.category);
+    const [cat, upstream] = await Promise.allSettled([catalog(cats), getJson<{ data: RawEvent[] }>(`/v1/prediction-markets/events?${params}`)]);
+    if (cat.status === "rejected" && upstream.status === "rejected") throw cat.reason;
+    const fetchedAtOf = new Map<string, number>();
+    const pool = new Map<string, RawEvent>();
+    const add = (e: RawEvent, at: number) => {
+      if (pool.has(e.ticker)) return;
+      pool.set(e.ticker, e);
+      fetchedAtOf.set(e.ticker, at);
+    };
+    if (cat.status === "fulfilled") for (const b of cat.value.batches) for (const e of b.raw) add(e, b.fetchedAt);
+    if (upstream.status === "fulfilled") for (const e of upstream.value.value.data) add(e, upstream.value.fetchedAt);
+    const hits = searchEvents([...pool.values()], opts.q);
+    const now = Date.now();
+    const events = hits
+      .filter((h) => h.event.category?.toLowerCase() !== "sports")
+      .filter((h) => !h.event.expiryDate || new Date(h.event.expiryDate).getTime() - now > SHORT_HORIZON_MS)
+      .map((h) => {
+        const ev = normalizeEvent(h.event, fetchedAtOf.get(h.event.ticker) ?? now);
+        ev.metadata = { ...ev.metadata, match: h.match, related: h.related };
+        return ev;
+      });
+    const oldest = Math.min(...[...fetchedAtOf.values()]);
+    return {
+      events: collapseSeries(events, true),
+      fetchedAt: new Date(Number.isFinite(oldest) ? oldest : now).toISOString(),
+      cached: cat.status === "fulfilled" && cat.value.cached,
+      total: events.length,
+      searchedEvents: pool.size,
+      partial: cat.status === "rejected" || (cat.status === "fulfilled" && cat.value.partial),
+    };
+  }
+  const c = await catalog(cats);
+  const events = c.batches.flatMap((b) => shape(b.raw, b.fetchedAt));
+  return { events: collapseSeries(events), fetchedAt: new Date(c.oldest).toISOString(), cached: c.cached, total: events.length, partial: c.partial };
 }
 
 /** Warm the browse cache once at boot so the first visitor doesn't wait on the 1 req/s gate. */

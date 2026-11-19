@@ -19,6 +19,7 @@ export interface LiveResult {
   fetchedAt?: string;
   error?: string;
   cached?: boolean;
+  searchedEvents?: number;
 }
 
 /** Live Gemini events (server-cached, abortable, deduplicated by TanStack Query). */
@@ -35,11 +36,16 @@ export function useLiveEvents(q: string, enabled = true) {
   });
 }
 
-const norm = (s: string) => s.toLowerCase();
+const norm = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 
+/** Local library matching (title, description, outcomes, tags). Live results are ranked server-side instead. */
 export function matches(e: ForkEvent, q: string) {
   if (!q) return true;
-  const hay = norm(`${e.title} ${e.description} ${e.category} ${(e.metadata.tags ?? []).join(" ")} ${e.externalMarketId ?? ""}`);
+  const hay = norm(`${e.title} ${e.description} ${e.possibleOutcomes.join(" ")} ${e.category} ${(e.metadata.tags ?? []).join(" ")} ${e.externalMarketId ?? ""}`);
   return norm(q)
     .split(/\s+/)
     .filter(Boolean)
