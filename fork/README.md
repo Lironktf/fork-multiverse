@@ -5,7 +5,7 @@ Choose an event. Change the assumptions. Explore what happens next.
 
 You pick a target (a live Gemini prediction market, or a defined hypothetical),
 drag other events into a basket, choose how each one resolves, and press
-**FORK REALITY**. The graph converges, ruptures and travels to a new *Verse*: a
+**FORK REALITY**. The graph converges, ruptures and travels to a new _Verse_: a
 saved hypothetical world where four AI analysts, drawn from two model families
 (Claude and Codex), estimate the target under your assumptions. You can name it, inspect where the analysts disagree, fork again,
 and compare worlds side by side.
@@ -14,23 +14,48 @@ and compare worlds side by side.
 
 ---
 
+## Solana conditional markets integration
+
+The original interface is preserved. **FORK Positions** now connects to the actual
+`fork-contracts` program on a local validator, using live exact Gemini instruments
+and mock collateral. Follow [the integration workflow](docs/integration.md)
+(including IDL generation before building) and [verification report](docs/verification.md).
+The historical status and screenshots below describe the original forecasting app;
+the integration documents describe the current local conditional-trading workflow.
+
 ## Run it
 
+From this directory, install both packages and generate the Anchor client:
+
 ```bash
-cd fork
-npm install
-npm run dev          # http://localhost:3000
+npm run setup
+cp .env.example .env.local
 ```
 
-No API keys are required.
+Then run each process in its own terminal, all from `fork/`:
+
+```bash
+npm run validator   # persistent local validator and deployed program
+npm run oracle      # mock collateral, configuration, live Gemini oracle
+npm run dev -- --hostname 127.0.0.1  # http://127.0.0.1:3000
+```
+
+`npm run verify` builds and checks both packages. Browser tests additionally need
+these services running; see [the workflow](docs/integration.md) for live and
+fixture test commands. `npm run build` and `npm run dev` automatically synchronize
+the generated client from the built contracts.
+
+No Gemini API keys are required. Generate the browser IDL first with
+`npm --prefix contracts run app:sync` after building the contracts.
 
 - **Live market data:** Gemini's public Prediction Markets API (no key needed for reads).
 - **Model analysis:** two local CLIs, each logged in with your own subscription:
   - **Claude Code** (`claude -p`, Claude subscription)
   - **OpenAI Codex** (`codex exec`, ChatGPT login)
 
-  By default the analysts are **mixed**: A and C run on Claude, B and D on Codex. *Settings → Analysts* switches to Claude-only or Codex-only. If neither CLI is installed, FORK switches to its labelled **demonstration engine** on its own.
-- **Demo engine on demand:** choose *Settings → Forecast engine → DEMONSTRATION* to get instant, deterministic results.
+  By default the analysts are **mixed**: A and C run on Claude, B and D on Codex. _Settings → Analysts_ switches to Claude-only or Codex-only. If neither CLI is installed, FORK switches to its labelled **demonstration engine** on its own.
+
+- **Demo engine on demand:** choose _Settings → Forecast engine → DEMONSTRATION_ to get instant, deterministic results.
 
 Production:
 
@@ -49,26 +74,26 @@ BASE_URL=http://localhost:3000 npx playwright test
 
 All are optional. See [`.env.example`](.env.example).
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `FORK_ENGINE` | `auto` | `auto` uses `claude -p` when available; `demo` forces fixtures |
-| `FORK_CLAUDE_BIN` | `claude` | Path to the Claude Code CLI |
-| `FORK_CLAUDE_MODEL` | `sonnet` | Model alias for analysts and the revision round |
-| `FORK_CLAUDE_RESEARCH_MODEL` | = model | Model for the WebSearch research step |
-| `FORK_CLAUDE_FAST_MODEL` | = model | Model for "Find the next fork" |
-| `FORK_CLAUDE_CONCURRENCY` | `4` | Max parallel `claude` processes |
-| `FORK_CODEX_BIN` | `codex` | Path to the Codex CLI (must be logged in: `codex login`) |
-| `FORK_CODEX_MODEL` | Codex default | Model for Codex analysts (`-m`) |
-| `FORK_CODEX_EFFORT` | `low` | `model_reasoning_effort` for Codex |
-| `FORK_CODEX_CONCURRENCY` | `4` | Max parallel `codex` processes |
-| `FORK_CODEX` | `1` | `0` disables Codex even if installed |
-| `FORK_RESEARCH` | `1` | `0` skips web research |
-| `FORK_REVISION` | `auto` | Revision round: `auto` (only on significant disagreement), `1` (always), `0` (never) |
-| `FORK_DB_PATH` | `.data/fork.sqlite` | SQLite file (forecasts, universe mirror, research cache) |
-| `GEMINI_API_BASE` | `https://api.gemini.com` | Gemini REST base URL |
-| `NEXT_PUBLIC_SOLANA_CLUSTER` | `devnet` | Solana cluster |
-| `NEXT_PUBLIC_SOLANA_RPC` | public devnet | Custom RPC endpoint |
-| `NEXT_DIST_DIR` | `.next` | Build directory, so a production build can run beside `next dev` |
+| Variable                     | Default                  | Purpose                                                                              |
+| ---------------------------- | ------------------------ | ------------------------------------------------------------------------------------ |
+| `FORK_ENGINE`                | `auto`                   | `auto` uses `claude -p` when available; `demo` forces fixtures                       |
+| `FORK_CLAUDE_BIN`            | `claude`                 | Path to the Claude Code CLI                                                          |
+| `FORK_CLAUDE_MODEL`          | `sonnet`                 | Model alias for analysts and the revision round                                      |
+| `FORK_CLAUDE_RESEARCH_MODEL` | = model                  | Model for the WebSearch research step                                                |
+| `FORK_CLAUDE_FAST_MODEL`     | = model                  | Model for "Find the next fork"                                                       |
+| `FORK_CLAUDE_CONCURRENCY`    | `4`                      | Max parallel `claude` processes                                                      |
+| `FORK_CODEX_BIN`             | `codex`                  | Path to the Codex CLI (must be logged in: `codex login`)                             |
+| `FORK_CODEX_MODEL`           | Codex default            | Model for Codex analysts (`-m`)                                                      |
+| `FORK_CODEX_EFFORT`          | `low`                    | `model_reasoning_effort` for Codex                                                   |
+| `FORK_CODEX_CONCURRENCY`     | `4`                      | Max parallel `codex` processes                                                       |
+| `FORK_CODEX`                 | `1`                      | `0` disables Codex even if installed                                                 |
+| `FORK_RESEARCH`              | `1`                      | `0` skips web research                                                               |
+| `FORK_REVISION`              | `auto`                   | Revision round: `auto` (only on significant disagreement), `1` (always), `0` (never) |
+| `FORK_DB_PATH`               | `.data/fork.sqlite`      | SQLite file (forecasts, universe mirror, research cache)                             |
+| `GEMINI_API_BASE`            | `https://api.gemini.com` | Gemini REST base URL                                                                 |
+| `NEXT_PUBLIC_SOLANA_CLUSTER` | `devnet`                 | Solana cluster                                                                       |
+| `NEXT_PUBLIC_SOLANA_RPC`     | public devnet            | Custom RPC endpoint                                                                  |
+| `NEXT_DIST_DIR`              | `.next`                  | Build directory, so a production build can run beside `next dev`                     |
 
 ---
 
@@ -79,28 +104,28 @@ Every probability in the UI carries a tag: **MARKET** (a real observed price),
 illustrative). Event sources are tagged **Gemini**, **Demo**, **Custom** or
 **Model-proposed**.
 
-| Area | Status |
-| --- | --- |
-| Gemini Prediction Markets (events, contracts, best bid/ask, last trade, volume, expiry, resolution text) | **Live.** Fetched server-side from documented public endpoints, cached 90s with stale-while-revalidate, throttled to 1 request/s. Missing quotes stay missing. Nothing is substituted. |
-| Implied probability | **Live, derived:** mid of best bid/ask; last trade if one side is empty; no estimate if only one side quotes. Binary NO is the complement of the YES book. |
-| Four-analyst forecasting (`claude -p` + `codex exec`) | **Live** when either CLI is present. Research (Claude WebSearch, or Codex live web search in Codex-only mode, cited) → 4 role analysts in parallel, blind to each other → disagreement analysis → optional revision (arguments only, numbers withheld; each analyst revises on its own provider) → equal-weight mean → zod validation → SQLite. A failed analyst retries once on the *other* provider and is labelled with the model that actually answered. Every analyst row and graph node shows its provider. Verified end to end in mixed, Claude-only and Codex-only modes. |
-| Find the next fork | **Live** (model-ranked by estimated swing P(target \| outcome)); **demo** ranking from fixtures in demo mode. Not a formal information-gain calculation, and the UI says so. |
-| Demo engine and demo library | **Demonstration.** 4 targets and 14 hypothetical events with authored, illustrative log-odds effects. Labelled DEMO everywhere. Live events added to a demo-engine scenario are explicitly ignored, never invented. |
-| Verse persistence | **Live:** localStorage (primary) plus a debounced mirror to server SQLite. Forecasts are immutable once complete; reopening a Verse shows the original analysis. |
-| Solana: wallet + Verse attestation | **Implemented, not verified onchain from this server.** Wallet Standard discovery (Phantom, Solflare, …), devnet. "Anchor this Verse" sends a real SPL Memo transaction containing `FORK1|<verseId>|sha256(verse+forecast)`, signed by the user's wallet; success is shown only after confirmation, with an explorer link. A full devnet round-trip couldn't be run here: the devnet RPC faucet returns *410 (closed)* and the public RPC rate-limited simulation (429). `scripts/verify-devnet-memo.mjs` runs that check on a machine with devnet SOL. |
-| FORK Positions (collateralised conditional claims) | **Not deployed.** Anchor program source in [`programs/fork_positions`](programs/fork_positions/README.md). It was not compiled (no Rust toolchain here). The UI labels it *not deployed* and has no simulated positions. |
+| Area                                                                                                     | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gemini Prediction Markets (events, contracts, best bid/ask, last trade, volume, expiry, resolution text) | **Live.** Fetched server-side from documented public endpoints, cached 90s with stale-while-revalidate, throttled to 1 request/s. Missing quotes stay missing. Nothing is substituted.                                                                                                                                                                                                                                                                                                                                                                                            |
+| Implied probability                                                                                      | **Live, derived:** mid of best bid/ask; last trade if one side is empty; no estimate if only one side quotes. Binary NO is the complement of the YES book.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Four-analyst forecasting (`claude -p` + `codex exec`)                                                    | **Live** when either CLI is present. Research (Claude WebSearch, or Codex live web search in Codex-only mode, cited) → 4 role analysts in parallel, blind to each other → disagreement analysis → optional revision (arguments only, numbers withheld; each analyst revises on its own provider) → equal-weight mean → zod validation → SQLite. A failed analyst retries once on the _other_ provider and is labelled with the model that actually answered. Every analyst row and graph node shows its provider. Verified end to end in mixed, Claude-only and Codex-only modes. |
+| Find the next fork                                                                                       | **Live** (model-ranked by estimated swing P(target \| outcome)); **demo** ranking from fixtures in demo mode. Not a formal information-gain calculation, and the UI says so.                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Demo engine and demo library                                                                             | **Demonstration.** 4 targets and 14 hypothetical events with authored, illustrative log-odds effects. Labelled DEMO everywhere. Live events added to a demo-engine scenario are explicitly ignored, never invented.                                                                                                                                                                                                                                                                                                                                                               |
+| Verse persistence                                                                                        | **Live:** localStorage (primary) plus a debounced mirror to server SQLite. Forecasts are immutable once complete; reopening a Verse shows the original analysis.                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Solana: wallet + Verse attestation                                                                       | **Implemented, not verified onchain from this server.** Wallet Standard discovery (Phantom, Solflare, …), devnet. "Anchor this Verse" sends a real SPL Memo transaction containing `FORK1                                                                                                                                                                                                                                                                                                                                                                                         | <verseId> | sha256(verse+forecast)`, signed by the user's wallet; success is shown only after confirmation, with an explorer link. A full devnet round-trip couldn't be run here: the devnet RPC faucet returns *410 (closed)* and the public RPC rate-limited simulation (429). `scripts/verify-devnet-memo.mjs` runs that check on a machine with devnet SOL. |
+| FORK Positions (collateralised conditional claims)                                                       | **Integrated and verified on a local validator.** The existing Positions card selects exact live Gemini instruments, registers B given A=YES, and supports mock funding, wallet deposits, on-chain quotes, YES/NO trades, holdings and eligible redemption through `contracts`. Live trading and synthetic settlement were verified separately; live Gemini settlement is still unverified. See [integration](docs/integration.md) and [evidence](docs/verification.md).                                                                                                          |
 
 ---
 
 ## The journey
 
 1. **Origin:** a near-black canvas and one question. The welcome orb sits exactly on the Origin's target node; choosing a target drops the camera into it.
-2. **Discover:** browse *Possible futures*: live Gemini markets, the demo library, custom events (✦), or ⌘K.
-3. **Build the basket:** drag an event from the panel *or from the graph* toward the tray. It reacts to proximity, pulls the item in magnetically, and springs it into place. Click **+** as the accessible alternative. Set each outcome with segmented YES/NO controls or categorical outcome lists. Reorder, remove, undo (⌘Z), save a draft. Mutually exclusive assumptions raise a warning that you must acknowledge.
-4. **FORK REALITY:** a state machine runs *commit → converge → rupture → travel → arrive → reveal*. The basket locks and pulses run along the assumption edges. Assumptions converge into the target. A luminance pulse and radial warp follow. The camera then travels through a tunnel of branching paths and the new world assembles. About 3.4s in total; under reduced motion it becomes a short crossfade. Re-entry is ignored while a transition runs.
+2. **Discover:** browse _Possible futures_: live Gemini markets, the demo library, custom events (✦), or ⌘K.
+3. **Build the basket:** drag an event from the panel _or from the graph_ toward the tray. It reacts to proximity, pulls the item in magnetically, and springs it into place. Click **+** as the accessible alternative. Set each outcome with segmented YES/NO controls or categorical outcome lists. Reorder, remove, undo (⌘Z), save a draft. Mutually exclusive assumptions raise a warning that you must acknowledge.
+4. **FORK REALITY:** a state machine runs _commit → converge → rupture → travel → arrive → reveal_. The basket locks and pulses run along the assumption edges. Assumptions converge into the target. A luminance pulse and radial warp follow. The camera then travels through a tunnel of branching paths and the new world assembles. About 3.4s in total; under reduced motion it becomes a short crossfade. Re-entry is ignored while a transition runs.
 5. **Arrive:** name the Verse (suggested names come from its assumptions). The four analyst nodes resolve one by one as real results land; the dial and the number animate only when a new value arrives.
-6. **Disagreement:** when one analyst diverges by ≥12pp from the others' median (and the range is ≥15pp), a diamond node appears. *Inspect premises* shows both narratives, each attributed to its analysts. *Fork both* splits the world into two sibling Verses, one per premise.
-7. **Fork deeper:** children inherit every ancestor assumption. The basket and graph separate *inherited*, *assumed here*, *proposed (in basket)* and *related (merely considered)*.
+6. **Disagreement:** when one analyst diverges by ≥12pp from the others' median (and the range is ≥15pp), a diamond node appears. _Inspect premises_ shows both narratives, each attributed to its analysts. _Fork both_ splits the world into two sibling Verses, one per premise.
+7. **Fork deeper:** children inherit every ancestor assumption. The basket and graph separate _inherited_, _assumed here_, _proposed (in basket)_ and _related (merely considered)_.
 8. **Navigate and compare:** breadcrumb, Parent/Origin, the Universe tree, double-click any Verse node. Compare shows the probability gap, the shared ancestor, assumptions unique to each side, contested resolutions and per-analyst reasons, with a reminder that the gap is not causal.
 9. **Markets mode:** live first. Shows the order book (bid/ask/last/implied, data quality), volume, expiry, a Gemini link and related live markets.
 10. **Onchain:** connect a devnet wallet and anchor a Verse's fingerprint.
@@ -137,7 +162,7 @@ fork/
                             GraphView/nodes/NodePopover — DOM nodes + tooltips
   src/components/…          basket, discovery, forecast, verse (naming/compare/tree),
                             hud, solana
-  programs/fork_positions/  Anchor program draft (not deployed)
+  docs/legacy/fork_positions/  Anchor program draft (not deployed)
   tests/                    unit (domain) + e2e (journey) — Playwright runner
 ```
 
@@ -147,7 +172,7 @@ fork/
   (edges, pulses, starfield, warp, branch tunnel) under absolutely positioned DOM
   nodes (crisp text, focusable `<button>`s, screen-reader labels). The engine writes
   transforms directly each frame. React re-renders only when the graph's
-  *composition* changes, never on typing or pointer motion. The physics is
+  _composition_ changes, never on typing or pointer motion. The physics is
   anchored springs, local repulsion and drag coupling, plus a tiny idle drift.
   Positions are not coupled to API responses.
 - **Separated state:** universe (persisted) vs UI (ephemeral) vs graph/camera
@@ -220,7 +245,7 @@ errors were recorded:
 - hover tooltip, Verse popover, keyboard fit/focus
 - node drag and spring return
 - edge hover naming the relationship
-- analyst inspector, disagreement view, *fork both* (two tagged siblings)
+- analyst inspector, disagreement view, _fork both_ (two tagged siblings)
 - next-fork ranking and adding a suggestion as a pending graph node
 - compare
 - Universe tree rename and subtree delete
@@ -231,40 +256,40 @@ errors were recorded:
 
 ### Live models (real CLI runs)
 
-| Mode | Scenario | Result |
-| --- | --- | --- |
-| Claude only | BTC > $150k by Dec 2027 · Fed cuts 100bp YES · recession NO | 12–15% (4 analysts), 6 cited sources |
-| Codex only | same | 44–48% (4 analysts, `gpt-6-astra` via `codex exec`) |
-| Mixed | same | Claude A/C 13–17% vs Codex B/D 43–48%. Significant disagreement → revision round (each held) → ensemble 30.5% |
-| Mixed (UI) | US AI law by 2027 · AI incident YES · Taiwan blockade YES | Claude 12–14%, Codex 38–43%, disagreement node, 5 sources, baseline = Origin model estimate 22% |
-| Claude only (UI) | Gemini `RECESSION26` (market 4%) · two live assumptions | 1–2% with cited research |
+| Mode             | Scenario                                                    | Result                                                                                                        |
+| ---------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Claude only      | BTC > $150k by Dec 2027 · Fed cuts 100bp YES · recession NO | 12–15% (4 analysts), 6 cited sources                                                                          |
+| Codex only       | same                                                        | 44–48% (4 analysts, `gpt-6-astra` via `codex exec`)                                                           |
+| Mixed            | same                                                        | Claude A/C 13–17% vs Codex B/D 43–48%. Significant disagreement → revision round (each held) → ensemble 30.5% |
+| Mixed (UI)       | US AI law by 2027 · AI incident YES · Taiwan blockade YES   | Claude 12–14%, Codex 38–43%, disagreement node, 5 sources, baseline = Origin model estimate 22%               |
+| Claude only (UI) | Gemini `RECESSION26` (market 4%) · two live assumptions     | 1–2% with cited research                                                                                      |
 
 A first CLI attempt failed on a schema error. The UI showed "All analysts
 failed" with no number, as designed.
 
 Also checked: `next build` succeeds; eslint and `tsc` are clean. Frame rate is
-about 20 fps in *software-rendered* headless Chromium (SwiftShader, no GPU) on a
+about 20 fps in _software-rendered_ headless Chromium (SwiftShader, no GPU) on a
 4-core server. That isn't representative of a laptop GPU, and 60 fps was **not
 measured** on real hardware.
 
 ## Screenshots
 
-| | |
-| --- | --- |
-| ![](docs/screenshots/02-basket.png) basket | ![](docs/screenshots/03-fork-commit.png) fork · commit |
-| ![](docs/screenshots/04-fork-converge.png) fork · converge / rupture | ![](docs/screenshots/05-fork-travel.png) fork · travel |
-| ![](docs/screenshots/06-arrival-naming.png) arrival + naming | ![](docs/screenshots/07-disagreement.png) disagreement |
-| ![](docs/screenshots/08-markets-mode.png) markets mode | ![](docs/screenshots/09-live-analysis-progress.png) live analysis progress |
-| ![](docs/screenshots/10-live-claude-forecast.png) live Claude forecast | ![](docs/screenshots/11-research-and-onchain.png) research + onchain |
-| ![](docs/screenshots/12-compare.png) compare | ![](docs/screenshots/13-universe-overview.png) universe overview |
-| ![](docs/screenshots/15-graph-drag-magnetic.png) graph → basket (magnetic) | ![](docs/screenshots/16-mobile.png) mobile |
-| ![](docs/screenshots/18-live-mixed-claude-codex.png) live mixed Claude + Codex | ![](docs/screenshots/19-settings-providers.png) settings · providers |
-| ![](docs/screenshots/20-edge-hover.png) edge relationship hover | ![](docs/screenshots/21-conflict-warning.png) conflict warning |
+|                                                                                |                                                                            |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| ![](docs/screenshots/02-basket.png) basket                                     | ![](docs/screenshots/03-fork-commit.png) fork · commit                     |
+| ![](docs/screenshots/04-fork-converge.png) fork · converge / rupture           | ![](docs/screenshots/05-fork-travel.png) fork · travel                     |
+| ![](docs/screenshots/06-arrival-naming.png) arrival + naming                   | ![](docs/screenshots/07-disagreement.png) disagreement                     |
+| ![](docs/screenshots/08-markets-mode.png) markets mode                         | ![](docs/screenshots/09-live-analysis-progress.png) live analysis progress |
+| ![](docs/screenshots/10-live-claude-forecast.png) live Claude forecast         | ![](docs/screenshots/11-research-and-onchain.png) research + onchain       |
+| ![](docs/screenshots/12-compare.png) compare                                   | ![](docs/screenshots/13-universe-overview.png) universe overview           |
+| ![](docs/screenshots/15-graph-drag-magnetic.png) graph → basket (magnetic)     | ![](docs/screenshots/16-mobile.png) mobile                                 |
+| ![](docs/screenshots/18-live-mixed-claude-codex.png) live mixed Claude + Codex | ![](docs/screenshots/19-settings-providers.png) settings · providers       |
+| ![](docs/screenshots/20-edge-hover.png) edge relationship hover                | ![](docs/screenshots/21-conflict-warning.png) conflict warning             |
 
 ## Known limitations
 
 - Solana devnet attestation is implemented but was not confirmed onchain from this server (faucet closed / RPC rate limits), and no wallet extension exists in headless tests.
-- FORK Positions is a source-level design only.
+- Conditional positions currently support one exact B given A=YES pair on a local validator with mock funds. The older `docs/legacy/fork_positions` draft is retained as historical source; the active backend is `contracts`.
 - Live analysis takes about 1–3 minutes (research plus four parallel CLI runs). The UI shows real step-by-step progress rather than blocking. Analyses run inside the Next.js server process: a restart mid-run marks that job as lost rather than resuming it.
 - Mixed mode uses two model families, but they are still not independent forecasters (shared research digest, overlapping training data). Single-provider modes share one family entirely.
 - The demo library's baselines are illustrative. Research during testing put BTC near $65k in mid-2026, far from what the 35% demo baseline implies.
