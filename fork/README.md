@@ -6,8 +6,8 @@ Choose an event. Change the assumptions. Explore what happens next.
 You pick a target (a live Gemini prediction market, or a defined hypothetical),
 drag other events into a basket, choose how each one resolves, and press
 **FORK REALITY**. The graph converges, ruptures and travels to a new *Verse*: a
-saved hypothetical world where four AI analysts, drawn from two model families
-(Claude and Codex), estimate the target under your assumptions. You can name it, inspect where the analysts disagree, fork again,
+saved hypothetical world where four AI analysts, drawn from three model families
+(Claude, Codex and Grok) and run in parallel, estimate the target under your assumptions. You can name it, inspect where the analysts disagree, fork again,
 and compare worlds side by side.
 
 ![Welcome](docs/screenshots/01-welcome.png)
@@ -28,8 +28,9 @@ No API keys are required.
 - **Model analysis:** two local CLIs, each logged in with your own subscription:
   - **Claude Code** (`claude -p`, Claude subscription)
   - **OpenAI Codex** (`codex exec`, ChatGPT login)
+  - **xAI Grok** (`grok -p`, grok.com login; needs grok CLI ≥ 1.0.13)
 
-  By default the analysts are **mixed**: A and C run on Claude, B and D on Codex. *Settings → Analysts* switches to Claude-only or Codex-only. If neither CLI is installed, FORK switches to its labelled **demonstration engine** on its own.
+  By default the analysts are **mixed**: A Claude · B Codex · C Grok · D Codex (with only two CLIs installed, the roles spread over those two). Research and "Find the next fork" fan out to **every** installed family in parallel and merge the results. *Settings → Analysts* switches to a single family. If no CLI is installed, FORK switches to its labelled **demonstration engine** on its own.
 - **Demo engine on demand:** choose *Settings → Forecast engine → DEMONSTRATION* to get instant, deterministic results.
 
 Production:
@@ -62,6 +63,12 @@ All are optional. See [`.env.example`](.env.example).
 | `FORK_CODEX_EFFORT` | `low` | `model_reasoning_effort` for Codex |
 | `FORK_CODEX_CONCURRENCY` | `4` | Max parallel `codex` processes |
 | `FORK_CODEX` | `1` | `0` disables Codex even if installed |
+| `FORK_GROK_BIN` | `grok` | Path to the Grok CLI (must be logged in: `grok login`) |
+| `FORK_GROK_MODEL` | Grok default | Model for Grok analysts (`-m`) |
+| `FORK_GROK_EFFORT` | `low` | `--reasoning-effort` (measured: default 128s vs low 26s per analyst call) |
+| `FORK_GROK_CONCURRENCY` | `4` | Max parallel `grok` processes |
+| `FORK_GROK` | `1` | `0` disables Grok even if installed |
+| `FORK_RESEARCH_GRACE_MS` | `25000` | After the first research provider answers, how long to wait for the others |
 | `FORK_RESEARCH` | `1` | `0` skips web research |
 | `FORK_REVISION` | `auto` | Revision round: `auto` (only on significant disagreement), `1` (always), `0` (never) |
 | `FORK_DB_PATH` | `.data/fork.sqlite` | SQLite file (forecasts, universe mirror, research cache) |
@@ -82,9 +89,11 @@ illustrative). Event sources are tagged **Gemini**, **Demo**, **Custom** or
 | Area | Status |
 | --- | --- |
 | Gemini Prediction Markets (events, contracts, best bid/ask, last trade, volume, expiry, resolution text) | **Live.** Fetched server-side from documented public endpoints, cached 90s with stale-while-revalidate, throttled to 1 request/s. Missing quotes stay missing. Nothing is substituted. |
+| Market search | **Live.** Gemini's own `search` filter matches titles only (`search=iran` → 0 results on 2026-11-19, though Hormuz, Israel-PM and world-leader markets exist). FORK ranks the whole non-sports catalog by title, outcome labels, tags and resolution rules, accent-insensitively, merges Gemini's title search, and, when a term has few direct hits, shows *related* markets from a small hand-written topic map (an ASSUMPTION, in `domain/event-search.ts`). Every row says why it matched. |
+| Odds over time | **Live.** Gemini `GET /v2/candles/{instrumentSymbol}/{tf}`: 1D = 15m, 1W = 1h, 1M = 6h, ALL = daily since listing. This endpoint is documented for spot symbols and not listed in the prediction-markets docs, but it accepts contract symbols (verified 2026-11-19). The line shows traded closes; this Verse's MODEL estimate is overlaid as a dashed line, and the gap is measured against the same bid/ask mid the forecast used. DEMO numbers are never overlaid. |
 | Implied probability | **Live, derived:** mid of best bid/ask; last trade if one side is empty; no estimate if only one side quotes. Binary NO is the complement of the YES book. |
-| Four-analyst forecasting (`claude -p` + `codex exec`) | **Live** when either CLI is present. Research (Claude WebSearch, or Codex live web search in Codex-only mode, cited) → 4 role analysts in parallel, blind to each other → disagreement analysis → optional revision (arguments only, numbers withheld; each analyst revises on its own provider) → equal-weight mean → zod validation → SQLite. A failed analyst retries once on the *other* provider and is labelled with the model that actually answered. Every analyst row and graph node shows its provider. Verified end to end in mixed, Claude-only and Codex-only modes. |
-| Find the next fork | **Live** (model-ranked by estimated swing P(target \| outcome)); **demo** ranking from fixtures in demo mode. Not a formal information-gain calculation, and the UI says so. |
+| Four-analyst forecasting (`claude -p` + `codex exec` + `grok -p`) | **Live** when any CLI is present. Research fans out to every installed family in parallel (each does its own web search; findings are merged, de-duplicated by URL, and the research note names who contributed) → 4 role analysts in parallel, blind to each other → disagreement analysis → optional revision (arguments only, numbers withheld; each analyst revises on its own provider) → equal-weight mean → zod validation → SQLite. A failed analyst retries once on *another* family and is labelled with the model that actually answered. Every analyst row and graph node shows its provider. Verified end to end in mixed, Claude-only and Codex-only modes. |
+| Find the next fork | **Live:** every installed family is asked in parallel; a question several families raise independently ranks first (tagged with who proposed it), then by estimated swing P(target \| outcome); **demo** ranking from fixtures in demo mode. Not a formal information-gain calculation, and the UI says so. |
 | Demo engine and demo library | **Demonstration.** 4 targets and 14 hypothetical events with authored, illustrative log-odds effects. Labelled DEMO everywhere. Live events added to a demo-engine scenario are explicitly ignored, never invented. |
 | Verse persistence | **Live:** localStorage (primary) plus a debounced mirror to server SQLite. Forecasts are immutable once complete; reopening a Verse shows the original analysis. |
 | Solana: wallet + Verse attestation | **Implemented, not verified onchain from this server.** Wallet Standard discovery (Phantom, Solflare, …), devnet. "Anchor this Verse" sends a real SPL Memo transaction containing `FORK1|<verseId>|sha256(verse+forecast)`, signed by the user's wallet; success is shown only after confirmation, with an explorer link. A full devnet round-trip couldn't be run here: the devnet RPC faucet returns *410 (closed)* and the public RPC rate-limited simulation (429). `scripts/verify-devnet-memo.mjs` runs that check on a machine with devnet SOL. |
@@ -162,10 +171,17 @@ fork/
   AGENTS.md is discovered), `--sandbox read-only --ephemeral --ignore-rules`,
   `--output-schema` (made strict: closed objects with every property required),
   and `-c web_search="live"` only for research.
+- **`grok -p` isolation:** an empty temporary working directory, Claude/Cursor
+  compatibility discovery switched off through `GROK_CLAUDE_*_ENABLED=false` (Grok
+  otherwise loads `~/.claude/CLAUDE.md` into every prompt), `--sandbox read-only`,
+  `--system-prompt-override`, `--no-subagents`, `--tools ""
+  --disable-web-search` for analysts and `--tools web_search,web_fetch` for research,
+  `--json-schema` for structured output.
 - **Shared rules:** each output is validated again with zod. Citations are only
   kept when the URL came from the research step.
-- **Mixed by default** (A and C on Claude · B and D on Codex). The skeptic never
-  shares a family with the causal analyst. In testing, the families disagreed
+- **Mixed by default** (A Claude · B Codex · C Grok · D Codex; each role has a
+  preference order, so any two installed families still split the roles). The
+  skeptic never shares a family with the causal analyst. In testing, the families disagreed
   sharply on the same scenario and research: for BTC > $150k given Fed cuts and
   no recession, Claude analysts gave 12–17% and Codex analysts 43–48%. Mixed mode
   surfaces that disagreement instead of hiding it.
@@ -238,6 +254,7 @@ errors were recorded:
 | Mixed | same | Claude A/C 13–17% vs Codex B/D 43–48%. Significant disagreement → revision round (each held) → ensemble 30.5% |
 | Mixed (UI) | US AI law by 2027 · AI incident YES · Taiwan blockade YES | Claude 12–14%, Codex 38–43%, disagreement node, 5 sources, baseline = Origin model estimate 22% |
 | Claude only (UI) | Gemini `RECESSION26` (market 4%) · two live assumptions | 1–2% with cited research |
+| Mixed, 3 families (UI, 2026-11-19) | Gemini `LEAVE2026` → Pedro Sánchez, Origin (market mid 18%) | Claude 15%, Codex 43% / 57%, Grok 36%; research by Grok + Claude in parallel; disagreement → revision → ensemble 36%; analyst wall-times 23s / 34–36s / 70s |
 
 A first CLI attempt failed on a schema error. The UI showed "All analysts
 failed" with no number, as designed.
