@@ -32,11 +32,11 @@ function Settings() {
         <>
           <div className="meta mb-2 mt-3">Analysts</div>
           <div className="seg w-full" role="radiogroup" aria-label="Analyst model providers">
-            {(["mixed", "claude", "codex"] as const).map((m) => {
-              const ok = !status.data || (m === "mixed" ? status.data.claude && status.data.codex : status.data[m]);
+            {(["mixed", "claude", "codex", "grok"] as const).map((m) => {
+              const ok = !status.data || (m === "mixed" ? [status.data.claude, status.data.codex, status.data.grok].filter(Boolean).length > 1 : status.data[m]);
               return (
                 <button key={m} role="radio" aria-checked={providers === m} disabled={!ok} onClick={() => setProviders(m)} className={`flex-1 ${providers === m ? "bg-white/[0.08]" : ""} disabled:opacity-30`} data-testid={`providers-${m}`}>
-                  {m === "mixed" ? "MIXED" : m === "claude" ? "CLAUDE" : "CODEX"}
+                  {m.toUpperCase()}
                 </button>
               );
             })}
@@ -51,14 +51,19 @@ function Settings() {
             : status.data.engine === "demo"
               ? "No model CLI on this server — forecasts fall back to labelled demonstration fixtures."
               : providers === "mixed"
-                ? "Analysts A & C run on Claude (claude -p), B & D on Codex (codex exec). Two model families — still not independent forecasters."
+                ? status.data.grok
+                  ? "A Claude · B Codex · C Grok · D Codex. Research and next-fork search fan out to all three in parallel. Different families — still not independent forecasters."
+                  : "Analysts A & C run on Claude (claude -p), B & D on Codex (codex exec). Two model families — still not independent forecasters."
                 : providers === "claude"
                   ? `All four analysts on Claude “${status.data.model}” via claude -p.`
-                  : "All four analysts on Codex via codex exec (research uses Codex web search)."}
+                  : providers === "grok"
+                    ? "All four analysts on Grok via grok -p (research uses Grok web search)."
+                    : "All four analysts on Codex via codex exec (research uses Codex web search)."}
       </p>
       <div className="mt-1.5 flex gap-2 text-[10px] text-ink-3">
         <span className={status.data?.claude ? "text-up/80" : ""}>● claude {status.data?.claude ? "ready" : "missing"}</span>
         <span className={status.data?.codex ? "text-up/80" : ""}>● codex {status.data?.codex ? "ready" : "missing"}</span>
+        <span className={status.data?.grok ? "text-up/80" : ""}>● grok {status.data?.grok ? "ready" : "missing"}</span>
       </div>
       <div className="meta mb-2 mt-4">Motion</div>
       <div className="seg w-full" role="radiogroup" aria-label="Motion preference">

@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 
-export const ProviderMode = z.enum(["mixed", "claude", "codex"]);
+export const ProviderMode = z.enum(["mixed", "claude", "codex", "grok"]);
 export type ProviderMode = z.infer<typeof ProviderMode>;
 
 export const ProbabilityKind = z.enum(["MARKET", "MODEL", "DEMO"]);
@@ -177,7 +177,7 @@ export type AnalystOutput = z.infer<typeof AnalystOutput>;
 export const ModelRun = z.object({
   role: ModelRole,
   model: z.string(), // e.g. "claude-sonnet-5-5 via claude -p" or "demo-fixture"
-  provider: z.enum(["claude", "codex", "demo"]).optional(),
+  provider: z.enum(["claude", "codex", "grok", "demo"]).optional(),
   status: z.enum(["queued", "running", "done", "failed"]),
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
@@ -209,7 +209,7 @@ export const Forecast = z.object({
   verseId: z.string(),
   targetEventId: z.string(),
   targetOutcome: z.string(),
-  engine: z.enum(["claude-cli", "codex-cli", "multi-cli", "demo"]),
+  engine: z.enum(["claude-cli", "codex-cli", "grok-cli", "multi-cli", "demo"]),
   kind: ProbabilityKind, // MODEL or DEMO
   baselineProbability: z.number().nullable(),
   baselineKind: ProbabilityKind.nullable(),
@@ -236,5 +236,7 @@ export const NextForkSuggestion = z.object({
   /** model-estimated P(target | outcome) per outcome — used for ranking only */
   conditional: z.array(z.object({ outcome: z.string(), probability: z.number() })),
   swing: z.number(),
+  /** which model families proposed this question (parallel next-fork search) */
+  proposedBy: z.array(z.string()).optional(),
 });
 export type NextForkSuggestion = z.infer<typeof NextForkSuggestion>;
