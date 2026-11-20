@@ -33,5 +33,5 @@ export interface AppConfig {
   rpc: string;
   genesis: string;
   idlHash: string;
-  cluster: "localnet";
+  cluster: "localnet" | "devnet";
 }

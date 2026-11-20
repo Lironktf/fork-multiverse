@@ -6,8 +6,11 @@ skip_local_validator = true
 resolution = true
 skip-lint = false
 
+[programs.devnet]
+fork_contracts = "13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN"
+
 [programs.localnet]
-fork_contracts = "2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv"
+fork_contracts = "13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN"
 
 [provider]
 cluster = "localnet"

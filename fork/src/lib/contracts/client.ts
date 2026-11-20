@@ -23,6 +23,8 @@ import { claimable, executionLimit, parseUnits } from "./amounts";
 
 export type Accounts = IdlAccounts<ForkContracts>;
 export const PROGRAM_ID = new PublicKey(idl.address);
+/** Thrown when this deployment has no trading service configured (not an error state). */
+export class ServiceNotConfigured extends Error {}
 export async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api/solana/${path}`, {
     method: body === undefined ? "GET" : "POST",
@@ -31,7 +33,9 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });
-  const result = await response.json();
+  const result = await response.json().catch(() => ({ ok: false }));
+  if (result.code === "not_configured")
+    throw new ServiceNotConfigured(result.error);
   if (!response.ok || !result.ok)
     throw new Error(result.error ?? "Local Solana service unavailable.");
   return result.data as T;
@@ -44,12 +48,14 @@ export function validateConfig(config: AppConfig) {
     throw new Error(
       "Incompatible program or IDL. Run npm run app:sync in contracts and rebuild Fork.",
     );
-  if (
-    config.cluster !== "localnet" ||
-    !["127.0.0.1", "localhost", "[::1]"].includes(new URL(config.rpc).hostname)
-  )
+  const host = new URL(config.rpc).hostname;
+  const ok =
+    config.cluster === "localnet"
+      ? ["127.0.0.1", "localhost", "[::1]"].includes(host)
+      : config.cluster === "devnet" && host === "api.devnet.solana.com";
+  if (!ok)
     throw new Error(
-      "This integration requires a local validator and mock funds.",
+      "This integration supports only a local validator or Solana devnet, with mock funds.",
     );
 }
 export function pda(...seeds: (string | PublicKey)[]) {

@@ -6,6 +6,7 @@ import { useUniverse } from "@/store/universe";
 import {
   api,
   marketClient,
+  ServiceNotConfigured,
   validateConfig,
   type ChainState,
   type Quote,
@@ -617,15 +618,17 @@ function PositionsContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
+  const [unconfigured, setUnconfigured] = useState(false);
   const connect = useCallback(async () => {
     setBusy(true);
     setError("");
+    setUnconfigured(false);
     try {
       const conf = await api<AppConfig>("config");
       validateConfig(conf);
-      if (SOLANA_CLUSTER !== "localnet")
+      if (SOLANA_CLUSTER !== conf.cluster)
         throw new Error(
-          "Set NEXT_PUBLIC_SOLANA_CLUSTER=localnet and the local RPC, then restart Fork.",
+          `The trading service runs on ${conf.cluster}; set NEXT_PUBLIC_SOLANA_CLUSTER=${conf.cluster} and restart Fork.`,
         );
       const all = await api<MarketDescriptor[]>("markets");
       setConfig(conf);
@@ -633,7 +636,8 @@ function PositionsContent() {
       const saved = localStorage.getItem(`fork-market:${conf.genesis}`);
       setMarket(all.find((m) => m.address === saved) ?? null);
     } catch (e) {
-      setError(errorText(e));
+      if (e instanceof ServiceNotConfigured) setUnconfigured(true);
+      else setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -663,7 +667,7 @@ function PositionsContent() {
   return (
     <>
       <p className="mt-2 text-[10.5px] leading-relaxed text-ink-3">
-        Trade B conditional on exact A=YES with local mock funds. This pair is
+        Trade B conditional on exact A=YES with mock funds. This pair is
         separate from the Verse’s full assumption basket. Gemini supplies
         metadata and outcomes; trades execute on Solana.
       </p>
@@ -672,7 +676,17 @@ function PositionsContent() {
           {error}
         </p>
       )}
-      {!config ? (
+      {unconfigured ? (
+        <p
+          className="mt-2 text-[10.5px] leading-relaxed text-ink-2"
+          data-testid="positions-unconfigured"
+        >
+          Trading isn’t enabled on this deployment: it needs the FORK Solana
+          service (oracle + mock collateral) beside the app. Forecasting,
+          Verses and the attestation above work without it. Setup:{" "}
+          <code className="num">docs/integration.md</code>.
+        </p>
+      ) : !config ? (
         <button
           className={`${button} mt-2`}
           disabled={busy}
@@ -781,7 +795,7 @@ export function Positions() {
       >
         <span className="text-ink-2">FORK Positions</span>
         <span className="tag tag-custom">
-          {open ? "close" : "local Solana"}
+          {open ? "close" : `Solana ${SOLANA_CLUSTER}`}
         </span>
       </button>
       {open && <PositionsContent />}

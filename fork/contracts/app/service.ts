@@ -45,7 +45,9 @@ import type {
 
 const directory = resolve(process.env.FORK_LOCAL_DIR ?? ".local/app");
 mkdirSync(directory, { recursive: true, mode: 0o700 });
-const keyPath = join(directory, "admin.keypair.json");
+// Devnet: FORK_ADMIN_KEYPAIR points at a pre-funded signer kept outside the repo (mode 600).
+const keyPath =
+  process.env.FORK_ADMIN_KEYPAIR ?? join(directory, "admin.keypair.json");
 const admin = existsSync(keyPath)
   ? Keypair.fromSecretKey(
       Uint8Array.from(JSON.parse(readFileSync(keyPath, "utf8"))),
@@ -54,10 +56,18 @@ const admin = existsSync(keyPath)
 if (!existsSync(keyPath))
   writeFileSync(keyPath, JSON.stringify([...admin.secretKey]), { mode: 0o600 });
 const { program, connection, send, local } = makeClient(admin);
-if (!local)
-  throw new Error(
-    "Application service only supports a local validator and mock funds.",
-  );
+// makeClient only allows a non-local RPC for the official devnet with ENABLE_DEVNET=yes.
+// Collateral is always this service's own worthless mock mint on either cluster.
+const CLUSTER = local ? "localnet" : "devnet";
+// Devnet SOL cannot be airdropped (public faucet closed, measured 2026-11-20: HTTP 410),
+// so the admin tops up each user wallet for fees, bounded per wallet and in total.
+// ASSUMPTION: 0.02 SOL covers a session (~5,000 lamports/tx plus token-account rent);
+// overturned if users hit insufficient-funds errors mid-session.
+const FEE_TOPUP_LAMPORTS = 20_000_000;
+const FEE_TOPUP_BUDGET_LAMPORTS = Number(
+  process.env.FORK_FEE_TOPUP_BUDGET_LAMPORTS ?? 500_000_000,
+);
+let feeTopupSpent = 0;
 const config = pda("config", admin.publicKey);
 // A single upstream gate also covers rules documents and concurrent selectors.
 let sourceQueue: Promise<unknown> = Promise.resolve();
@@ -149,12 +159,17 @@ async function initialize() {
     if (!c.mint.equals(mint) || !c.admin.equals(admin.publicKey))
       throw new Error("Configuration mismatch.");
   } else {
-    const sig = await connection.requestAirdrop(
-      admin.publicKey,
-      20_000_000_000,
-    );
-    const result = await connection.confirmTransaction(sig, "confirmed");
-    if (result.value.err) throw new Error("Local SOL funding failed.");
+    if (local) {
+      const sig = await connection.requestAirdrop(
+        admin.publicKey,
+        20_000_000_000,
+      );
+      const result = await connection.confirmTransaction(sig, "confirmed");
+      if (result.value.err) throw new Error("Local SOL funding failed.");
+    } else if ((await connection.getBalance(admin.publicKey)) < 100_000_000)
+      throw new Error(
+        `Devnet admin ${admin.publicKey.toBase58()} needs at least 0.1 SOL (faucet.solana.com).`,
+      );
     const existing = await program.account.config.fetchNullable(config);
     if (existing && !existing.admin.equals(admin.publicKey))
       throw new Error(
@@ -186,7 +201,7 @@ async function initialize() {
 }
 function publicConfig(): AppConfig {
   return {
-    cluster: "localnet",
+    cluster: CLUSTER,
     rpc: connection.rpcEndpoint,
     genesis,
     program: PROGRAM_ID.toBase58(),
@@ -484,11 +499,30 @@ async function refresh(m: MarketDescriptor) {
 async function faucet(ownerText: string) {
   const owner = new PublicKey(ownerText);
   const signatures: string[] = [];
-  if ((await connection.getBalance(owner)) < 100_000_000) {
+  if (local && (await connection.getBalance(owner)) < 100_000_000) {
     const signature = await connection.requestAirdrop(owner, 1_000_000_000);
     const result = await connection.confirmTransaction(signature, "confirmed");
     if (result.value.err) throw new Error("SOL faucet failed.");
     signatures.push(signature);
+  } else if (
+    !local &&
+    (await connection.getBalance(owner)) < FEE_TOPUP_LAMPORTS / 2
+  ) {
+    if (feeTopupSpent + FEE_TOPUP_LAMPORTS > FEE_TOPUP_BUDGET_LAMPORTS)
+      throw new Error(
+        "Devnet fee top-up budget exhausted; fund this wallet at faucet.solana.com.",
+      );
+    feeTopupSpent += FEE_TOPUP_LAMPORTS;
+    signatures.push(
+      await transact(
+        "devnet fee top-up",
+        SystemProgram.transfer({
+          fromPubkey: admin.publicKey,
+          toPubkey: owner,
+          lamports: FEE_TOPUP_LAMPORTS,
+        }),
+      ),
+    );
   }
   const ata = await getOrCreateAssociatedTokenAccount(
     connection,
@@ -592,7 +626,7 @@ createServer(async (req, res) => {
   }
 }).listen(Number(process.env.FORK_SERVICE_PORT ?? "8787"), "127.0.0.1", () =>
   console.log(
-    "Fork local service: http://127.0.0.1:8787 (mock funds, live Gemini, real oracle polling)",
+    `Fork ${CLUSTER} service: http://127.0.0.1:${process.env.FORK_SERVICE_PORT ?? "8787"} (mock funds, live Gemini, real oracle polling)`,
   ),
 );
 let polling = false;

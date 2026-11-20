@@ -10,8 +10,14 @@ async function proxy(
   try {
     const service = process.env.FORK_LOCAL_SERVICE;
     if (!service)
-      throw new Error(
-        "Local Solana service is not configured. Follow docs/integration.md.",
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "not_configured",
+          error:
+            "The Solana trading service is not running for this deployment. See docs/integration.md.",
+        },
+        { status: 503 },
       );
     const local = new Set(["localhost", "127.0.0.1", "[::1]"]);
     // Next may normalize req.url to localhost even when the browser used 127.0.0.1.
