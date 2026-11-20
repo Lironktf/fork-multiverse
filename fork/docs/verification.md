@@ -327,3 +327,30 @@ Toolchain: Rust 1.89.0, Solana/Agave 3.1.10, Anchor CLI 1.1.2, Node 24.
 
 Sample local transaction signatures: `3HWkcZs9mU7CCjQ9…`, `444kW8pNadejxACn…`, `2eVbppYndBWGi1YN…`, `3UrQTxE3N4Aj5izM…`.
 Live Gemini settlement is still unverified (the instruments resolve after this run).
+
+
+## PR #3 merged on top of master — 2026-11-20 (branch `integrate/pr3-sol`)
+
+PR #3 (native devnet SOL collateral, LP fees, budget-sized depth, Trade tab) added on top of
+everything on master, keeping program `13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN`, the
+"If this happens, buy" card, the ⚡ rule list, Helius RPC and key redaction. One service
+codebase runs as two instances: `FORK_COLLATERAL=mock` (rules) and `FORK_COLLATERAL=sol`
+(Trade tab). Build: 488,904-byte `.so`.
+
+| Check | Result |
+| --- | --- |
+| `cargo test --locked` | 23/23 (3 unit + 20 LiteSVM) |
+| contracts `npm test` (incl. auto-buy) | 25/25 |
+| web `tsc`, `eslint`, format, unit | clean; 25/25 |
+| journey + Atlas (core UI) | 10/10 (journey twice) |
+| coexist: if-then card + ⚡ + Trade tab; no SOL service → no Trade UI | 2/2 |
+| graph-trading (Trade tab) | 3/3 |
+| local validator, both services, same program | if-then rule armed and bought on mock collateral; SOL market created and funded with native SOL |
+| native SOL wallet: atomic deposit, rejected signature, buy, sell, vault backing | passed |
+| synthetic settlement VOID / YES / NO redeemed once | 3/3 |
+| upgrade rehearsal (local): old program + old service with 1 fired + 2 armed rules → in-place upgrade → new service | market auto-migrated (bytes preserved), all rules kept, new rule bought on the migrated market; upgrade net cost 0.258 SOL |
+
+Not run / stale: `liquidity.spec.ts`, `solana.spec.ts`, `wallet-balance.spec.ts` still use the
+mock faucet / 6-decimal config that PR #3 itself removed from the Trade tab (they fail on
+PR #3's branch too); skipped with a TODO to port them to native SOL. The devnet upgrade is
+not yet executed.

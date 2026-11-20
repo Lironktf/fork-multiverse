@@ -28,16 +28,17 @@ conditions, demo events and custom events remain forecast-only.
 
 ## Start the app
 
-The current workspace uses an existing funded test operator:
-
 ```bash
 cd fork
-SIGNER_PATH="$PWD/contracts/.local/lp-browser-app-20261120/admin.keypair.json" npm run dev:devnet
+npm run dev:devnet   # SIGNER_PATH defaults to ~/.config/solana/fork-devnet-deployer.json
 ```
 
-The script starts the loopback-only service and frontend with matching devnet
-settings. SOL state lives in ignored `contracts/.local/devnet-sol`. The operator
-signs registrations and oracle reports; Phantom signs deposits, trades and
+This starts two instances of one service on program `13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN`
+plus the frontend: the mock-USDC instance (port 8788, "If this happens, buy" rules) and the
+native-SOL instance (port 8789, this Trade tab). Both use Helius' devnet RPC when
+`~/.config/helius/api_key` exists (the key stays server-side and is redacted from logs),
+otherwise the public endpoint. SOL state lives in ignored `contracts/.local/devnet-sol`. The
+operator signs registrations and oracle reports; Phantom signs deposits, trades and
 withdrawals. No browser-wallet secret is imported or exported.
 
 A clean frontend checkout needs Node 22+ and `npm ci`; generated public client
@@ -77,19 +78,15 @@ actual source outcomes; synthetic test reports are isolated from live markets.
 - [`math.rs`](../contracts/programs/fork-contracts/src/math.rs): integer pricing and fees.
 - [`market.rs`](../contracts/programs/fork-contracts/tests/market.rs): legacy and SOL backing/security tests.
 
-## Verified devnet deployment
+## Devnet deployment
 
-The SOL program upgrade and Copper/Brent market are confirmed on devnet.
-The installed binary matches SHA-256
-`507ee8c5d4cf511ec4963606538757d4c98cf26a9cdbbcb94f58be53c8181f13`.
-The market is open with 99,999,999 lamports of LP funding (the integer reserve
-required for a 0.1 SOL budget). Vault SOL equals that funding plus account rent.
-Total operator spend was 0.205939799 devnet SOL, within the approved 0.35 SOL;
-the deployment buffer was closed and its temporary balance recovered.
-
-See [public deployment evidence](../contracts/docs/devnet-deployment.json) and
-[local SOL payout evidence](../contracts/docs/native-sol-verification.json).
-The production demo currently runs at <http://localhost:3100>.
+PR #3 was first deployed by its author to a separate program,
+`2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv` (upgrade authority held by the author); its
+evidence is kept in [devnet-deployment.json](../contracts/docs/devnet-deployment.json). FORK runs
+the merged code as an **upgrade of its own program** `13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN`,
+so existing if-then markets keep working: the upgrade appends two fee fields to `Market`, and
+`npm --prefix contracts run migrate:markets` resizes existing markets (zero fees, every original
+byte preserved) before they are read with the new layout.
 
 ## Verification
 

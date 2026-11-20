@@ -187,19 +187,47 @@ async function verifyDeployment() {
     );
   deploymentCheckedAt = Date.now();
 }
+/**
+ * Markets created before the LP-fee upgrade are 10 bytes shorter (no fee_bps/fees_accrued).
+ * migrate_market (permissionless, idempotent) appends zero-fee fields and preserves every
+ * original byte; same checks as scripts/migrate-markets.ts.
+ */
+async function migrateMarkets() {
+  const size = program.coder.accounts.size("market");
+  for (const m of markets) {
+    const address = new PublicKey(m.address);
+    const before = await connection.getAccountInfo(address);
+    if (!before || before.data.length === size) continue;
+    if (before.data.length !== size - 10)
+      throw new Error(`Unexpected market layout at ${m.address}.`);
+    await transact(
+      "migrate market " + m.address,
+      await program.methods
+        .migrateMarket()
+        .accountsStrict({
+          payer: admin.publicKey,
+          market: address,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction(),
+    );
+    const after = (await connection.getAccountInfo(address))!;
+    if (
+      after.data.length !== size ||
+      !after.data.subarray(0, before.data.length).equals(before.data)
+    )
+      throw new Error(`Migration changed existing bytes of ${m.address}.`);
+  }
+}
 async function initialize() {
   genesis = await connection.getGenesisHash();
   validateNetwork(CLUSTER, rpc, genesis);
   await verifyDeployment();
   if (existsSync(manifestPath)) {
     const saved = JSON.parse(readFileSync(manifestPath, "utf8"));
-    if (
-      saved.genesis !== genesis ||
-      saved.program !== PROGRAM_ID.toBase58() ||
-      saved.idlHash !== idlHash
-    )
+    if (saved.genesis !== genesis || saved.program !== PROGRAM_ID.toBase58())
       throw new Error(
-        "Stale application session: genesis/program/IDL changed. Use a new FORK_LOCAL_DIR.",
+        "Stale application session: genesis/program changed. Use a new FORK_LOCAL_DIR.",
       );
     mint = new PublicKey(saved.mint);
     if (SOL !== mint.equals(NATIVE_MINT))
@@ -210,6 +238,14 @@ async function initialize() {
     const c = await program.account.config.fetch(config);
     if (!c.mint.equals(mint) || !c.admin.equals(admin.publicKey))
       throw new Error("Configuration mismatch.");
+    // Same program and chain, new IDL = an in-place program upgrade (verifyDeployment
+    // already proved the deployed bytes are this build). Bring this session's markets to
+    // the current layout instead of abandoning the session and its auto-buy rules.
+    if (saved.idlHash !== idlHash) {
+      await migrateMarkets();
+      save();
+      log("session-upgraded", { from: saved.idlHash, to: idlHash });
+    }
   } else {
     if (local) {
       const sig = await connection.requestAirdrop(
