@@ -65,7 +65,14 @@ test("3–18 · basket, fork, name, branch, navigate, reload, inspect, compare, 
   // 4 · drag from discovery into the basket
   await page.fill('[data-testid="discovery-search"]', "United States enters recession");
   const row = page.locator('[data-testid="discovery"] [data-event="demo-us-recession"]');
-  const from = (await row.boundingBox())!;
+  // live Gemini results load asynchronously above the library row; wait until it stops moving
+  let from = (await row.boundingBox())!;
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(250);
+    const next = (await row.boundingBox())!;
+    if (next.y === from.y) break;
+    from = next;
+  }
   const to = (await page.locator('[data-testid="basket"]').boundingBox())!;
   await page.mouse.move(from.x + 40, from.y + 15);
   await page.mouse.down();
