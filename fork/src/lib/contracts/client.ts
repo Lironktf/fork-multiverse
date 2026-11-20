@@ -11,22 +11,25 @@ import {
   type TransactionInstruction,
 } from "@solana/web3.js";
 import {
-  getAssociatedTokenAddressSync,
+  NATIVE_MINT,
   TOKEN_PROGRAM_ID,
   unpackAccount,
 } from "@solana/spl-token";
+import { nativeSolAccount } from "./generated/native-sol";
 import idl from "./generated/idl.json";
 import build from "./generated/build.json";
 import type { ForkContracts } from "./generated/fork_contracts";
 import type { AppConfig, MarketDescriptor } from "./generated/app-types";
 import { claimable, executionLimit, parseUnits } from "./amounts";
+import { liquidityMetrics } from "./liquidity";
+import { validateNetwork } from "./generated/network";
 
 export type Accounts = IdlAccounts<ForkContracts>;
 export const PROGRAM_ID = new PublicKey(idl.address);
 /** Thrown when this deployment has no trading service configured (not an error state). */
 export class ServiceNotConfigured extends Error {}
-export async function api<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`/api/solana/${path}`, {
+async function call<T>(base: string, path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`/api/${base}/${path}`, {
     method: body === undefined ? "GET" : "POST",
     headers:
       body === undefined ? undefined : { "Content-Type": "application/json" },
@@ -37,9 +40,15 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   if (result.code === "not_configured")
     throw new ServiceNotConfigured(result.error);
   if (!response.ok || !result.ok)
-    throw new Error(result.error ?? "Local Solana service unavailable.");
+    throw new Error(result.error ?? "Solana service unavailable.");
   return result.data as T;
 }
+/** Mock-collateral service: "If this happens, buy" rules. */
+export const api = <T>(path: string, body?: unknown) =>
+  call<T>("solana", path, body);
+/** Native-SOL service: the Trade tab (deposits, trades, liquidity in devnet SOL). */
+export const solApi = <T>(path: string, body?: unknown) =>
+  call<T>("sol", path, body);
 export function validateConfig(config: AppConfig) {
   if (
     config.program !== PROGRAM_ID.toBase58() ||
@@ -48,14 +57,10 @@ export function validateConfig(config: AppConfig) {
     throw new Error(
       "Incompatible program or IDL. Run npm run app:sync in contracts and rebuild Fork.",
     );
-  const host = new URL(config.rpc).hostname;
-  const ok =
-    config.cluster === "localnet"
-      ? ["127.0.0.1", "localhost", "[::1]"].includes(host)
-      : config.cluster === "devnet" && host === "api.devnet.solana.com";
-  if (!ok)
+  validateNetwork(config.cluster, config.rpc, config.genesis);
+  if (config.mint !== NATIVE_MINT.toBase58())
     throw new Error(
-      "This integration supports only a local validator or Solana devnet, with mock funds.",
+      "This deployment still uses legacy collateral. Start the SOL-backed service before trading.",
     );
 }
 export function pda(...seeds: (string | PublicKey)[]) {
@@ -84,17 +89,16 @@ export function marketClient(
   };
   const mint = new PublicKey(config.mint),
     vault = new PublicKey(market.vault);
-  const userToken = getAssociatedTokenAddressSync(mint, owner);
+  const lpAddress = pda("lp", accounts.market, owner);
   const funds = {
     ...accounts,
     mint,
     vault,
-    userToken,
     tokenProgram: TOKEN_PROGRAM_ID,
   };
   let minimumSlot = 0;
   async function network() {
-    const fresh = await api<AppConfig>("config");
+    const fresh = await solApi<AppConfig>("config");
     validateConfig(fresh);
     if (
       fresh.genesis !== config.genesis ||
@@ -103,7 +107,7 @@ export function marketClient(
       (await connection.getGenesisHash()) !== config.genesis
     )
       throw new Error(
-        "Wallet RPC or deployment changed. Reconnect to the configured local validator.",
+        "Wallet RPC or deployment changed. Reconnect to the configured Solana network.",
       );
   }
   async function read() {
@@ -113,8 +117,9 @@ export function marketClient(
       accounts.parent,
       accounts.target,
       accounts.trader,
-      userToken,
+      owner,
       vault,
+      lpAddress,
     ];
     const response = await connection.getMultipleAccountsInfoAndContext(keys, {
       commitment: "confirmed",
@@ -136,6 +141,9 @@ export function marketClient(
       a = decode("externalEvent", 2),
       b = decode("externalEvent", 3);
     const trader = response.value[4] ? decode("trader", 4) : null;
+    const lp = response.value[7] ? decode("lp", 7) : null;
+    if (lp && (!lp.owner.equals(owner) || !lp.market.equals(accounts.market)))
+      throw new Error("LP account does not belong to this wallet/market.");
     if (
       !m.config.equals(accounts.config) ||
       !m.parent.equals(accounts.parent) ||
@@ -163,9 +171,6 @@ export function marketClient(
       (!trader.owner.equals(owner) || !trader.market.equals(accounts.market))
     )
       throw new Error("Trader account does not belong to this wallet/market.");
-    const walletToken = response.value[5]
-      ? unpackAccount(userToken, response.value[5], TOKEN_PROGRAM_ID)
-      : null;
     const vaultToken = unpackAccount(
       vault,
       response.value[6],
@@ -174,8 +179,9 @@ export function marketClient(
     if (
       !vaultToken.mint.equals(mint) ||
       !vaultToken.owner.equals(accounts.market) ||
-      (walletToken &&
-        (!walletToken.mint.equals(mint) || !walletToken.owner.equals(owner)))
+      !vaultToken.isNative ||
+      BigInt(response.value[6]!.lamports) <
+        vaultToken.amount + (vaultToken.rentExemptReserve ?? 0n)
     )
       throw new Error("Collateral account mismatch.");
     const status = Object.keys(m.status)[0];
@@ -196,13 +202,16 @@ export function marketClient(
       .join(":");
     return {
       slot: response.context.slot,
+      paused: c.paused,
       market: m,
       parent: a,
       target: b,
       trader,
+      lp,
+      liquidity: liquidityMetrics(m, lp, status),
       status,
       fingerprint,
-      walletCollateral: walletToken?.amount ?? BigInt(0),
+      walletCollateral: BigInt(response.value[5]?.lamports ?? 0),
       vaultCollateral: vaultToken.amount,
       withdrawable: claimable(status, trader),
     };
@@ -268,14 +277,15 @@ export function marketClient(
     sign: (tx: Transaction) => Promise<Transaction>,
     progress: (message: string) => void,
   ) {
-    await api("refresh", { market: market.address });
+    await solApi("refresh", { market: market.address });
     const state = await read(),
       amount = parseUnits(value);
     if (state.walletCollateral < amount)
       throw new Error(
-        "Insufficient mock collateral. Use Get mock collateral first.",
+        "Insufficient SOL. Add devnet SOL to your wallet and leave enough for network fees and account rent.",
       );
-    const instructions: TransactionInstruction[] = [];
+    const native = await nativeSolAccount(connection, owner, amount);
+    const instructions: TransactionInstruction[] = [...native.open];
     if (!state.trader)
       instructions.push(
         await program.methods
@@ -291,14 +301,15 @@ export function marketClient(
     instructions.push(
       await program.methods
         .deposit(new BN(amount.toString()))
-        .accountsStrict(funds)
+        .accountsStrict({ ...funds, userToken: native.address })
         .instruction(),
+      native.close,
     );
     return send(instructions, sign, progress);
   }
   async function quote(yes: boolean, buy: boolean, quantity: string) {
     await network();
-    await api("refresh", { market: market.address });
+    await solApi("refresh", { market: market.address });
     const before = await read();
     if (!before.trader)
       throw new Error("Deposit collateral before requesting a quote.");
@@ -323,11 +334,14 @@ export function marketClient(
     if (buy && cost > BigInt(before.trader.cash.toString()))
       throw new Error("Insufficient conditional cash for this trade.");
     let probability: number | null = null;
+    let fee = "0";
     for (const event of new EventParser(PROGRAM_ID, program.coder).parseLogs(
       result.value.logs ?? [],
     )) {
-      if (event.name === "quoteEvent")
+      if (event.name === "quoteEvent") {
         probability = Number(event.data.yesPriceE18.toString()) / 1e18;
+        fee = event.data.fee.toString();
+      }
     }
     if ((await read()).fingerprint !== before.fingerprint)
       throw new Error("Market changed during quote. Request a fresh quote.");
@@ -336,6 +350,7 @@ export function marketClient(
       buy,
       amount: amount.toString(),
       cost: cost.toString(),
+      fee,
       probability,
       at: Date.now(),
       fingerprint: before.fingerprint,
@@ -357,7 +372,7 @@ export function marketClient(
       throw new Error(
         "Quote expired or wallet changed. Request a fresh quote.",
       );
-    await api("refresh", { market: market.address });
+    await solApi("refresh", { market: market.address });
     if (
       (await read()).fingerprint !== q.fingerprint ||
       Date.now() - q.at > 30_000
@@ -394,13 +409,99 @@ export function marketClient(
       throw new Error(
         "No withdrawable balance. Conditional gains remain locked until final settlement.",
       );
+    const native = await nativeSolAccount(connection, owner, 0n);
     return send(
-      [await program.methods.redeem().accountsStrict(funds).instruction()],
+      [
+        ...native.open,
+        await program.methods
+          .redeem()
+          .accountsStrict({ ...funds, userToken: native.address })
+          .instruction(),
+        native.close,
+      ],
       sign,
       progress,
     );
   }
-  return { read, network, deposit, quote, trade, redeem };
+  async function liquidity(
+    action: "fund" | "withdraw" | "start",
+    value: string,
+    sign: (tx: Transaction) => Promise<Transaction>,
+    progress: (message: string) => void,
+  ) {
+    const state = await read();
+    const instructions: TransactionInstruction[] = [];
+    const lpFunds = {
+      owner,
+      config: accounts.config,
+      market: accounts.market,
+      parent: accounts.parent,
+      target: accounts.target,
+      lp: lpAddress,
+      mint,
+      vault,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    };
+    if (action === "fund") {
+      const amount = parseUnits(value);
+      if (!state.liquidity.canFund)
+        throw new Error("Funding closes when trading starts.");
+      if (amount > state.walletCollateral)
+        throw new Error(
+          "Insufficient SOL. Leave enough for fees and account rent.",
+        );
+      const native = await nativeSolAccount(connection, owner, amount);
+      instructions.push(...native.open);
+      if (!state.lp)
+        instructions.push(
+          await program.methods
+            .openLp()
+            .accountsStrict({
+              owner,
+              market: accounts.market,
+              lp: lpAddress,
+              systemProgram: SystemProgram.programId,
+            })
+            .instruction(),
+        );
+      instructions.push(
+        await program.methods
+          .fundLp(new BN(amount.toString()))
+          .accountsStrict({ ...lpFunds, userToken: native.address })
+          .instruction(),
+        native.close,
+      );
+    } else if (action === "withdraw") {
+      if (!state.liquidity.canWithdraw)
+        throw new Error("LP capital is locked until terminal settlement.");
+      const amount = state.liquidity.terminal
+        ? state.liquidity.withdrawable
+        : parseUnits(value);
+      const native = await nativeSolAccount(connection, owner, 0n);
+      instructions.push(
+        ...native.open,
+        await program.methods
+          .withdrawLp(new BN(amount.toString()))
+          .accountsStrict({ ...lpFunds, userToken: native.address })
+          .instruction(),
+        native.close,
+      );
+    } else {
+      instructions.push(
+        await program.methods
+          .startMarket()
+          .accountsStrict({
+            config: accounts.config,
+            market: accounts.market,
+            parent: accounts.parent,
+            target: accounts.target,
+          })
+          .instruction(),
+      );
+    }
+    return send(instructions, sign, progress);
+  }
+  return { read, network, deposit, quote, trade, redeem, liquidity };
 }
 export type MarketClient = ReturnType<typeof marketClient>;
 export type ChainState = Awaited<ReturnType<MarketClient["read"]>>;

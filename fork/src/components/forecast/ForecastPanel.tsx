@@ -14,6 +14,8 @@ import { ORIGIN_ID } from "@/lib/domain/verse";
 import { ProbabilityDisplay, RangeTrack } from "./ProbabilityDisplay";
 import { Onchain } from "@/components/solana/Onchain";
 import { IfThenBuy } from "@/components/solana/IfThenBuy";
+import { Positions } from "@/components/solana/Positions";
+import { useSolTrading } from "@/lib/client/sol";
 import { MarketContext } from "./MarketContext";
 import { OddsHistory } from "./OddsHistory";
 
@@ -382,6 +384,8 @@ export function ForecastPanel() {
     useShallow((s) => ({ target: s.target, currentVerseId: s.currentVerseId, forecasts: s.forecasts, forecastIndex: s.forecastIndex, verses: s.verses, engineMode: s.engine, events: s.events, mode: s.mode })),
   );
   const { inspectRole, disagreementOpen, phase } = useUI(useShallow((s) => ({ inspectRole: s.inspectRole, disagreementOpen: s.disagreementOpen, phase: s.forkPhase })));
+  const solTrading = useSolTrading();
+  const workspaceTab = useUI(s => (solTrading ? s.workspaceTab : "forecast"));
   const f = forecastFor({ forecasts, forecastIndex }, currentVerseId, target);
   const verse = verses[currentVerseId];
   const parentF = verse.parentId ? forecastFor({ forecasts, forecastIndex }, verse.parentId, target) : null;
@@ -392,7 +396,11 @@ export function ForecastPanel() {
 
   return (
     <section aria-label="Forecast" className="surface pointer-events-auto flex min-h-0 flex-col overflow-hidden" data-testid="forecast-panel">
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3.5">
+      {solTrading && <div className="flex shrink-0 gap-1 border-b border-line px-4 pt-2" role="tablist" aria-label="World view">
+        {(["forecast", "trade"] as const).map(tab => <button key={tab} role="tab" aria-selected={workspaceTab === tab} aria-controls={`world-${tab}`} id={`tab-${tab}`} className={`px-4 py-2.5 text-sm border-b-2 ${workspaceTab === tab ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink"}`} onClick={() => useUI.getState().set({ workspaceTab: tab })}>{tab === "forecast" ? "Forecast" : "Trade"}</button>)}
+      </div>}
+      <div role="tabpanel" id={`world-${workspaceTab}`} aria-labelledby={`tab-${workspaceTab}`} className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3.5">
+        {workspaceTab === "trade" ? <Positions /> : <>
         <AnimatePresence mode="wait" initial={false}>
           {inspectRole && f ? (
             <ModelInspector key="inspect" f={f} role={inspectRole as ModelRole} />
@@ -455,6 +463,7 @@ export function ForecastPanel() {
             </motion.div>
           )}
         </AnimatePresence>
+        </>}
       </div>
     </section>
   );

@@ -13,8 +13,93 @@ declare_id!("13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN");
 #[program]
 pub mod fork_contracts {
     use super::*;
+    /// Permissionless, idempotent rent top-up. Existing economics never change.
+    pub fn migrate_market(ctx: Context<MigrateMarket>) -> Result<()> {
+        let account = ctx.accounts.market.to_account_info();
+        let size = 8 + Market::INIT_SPACE;
+        let old_size = size.checked_sub(10).ok_or(E::Math)?;
+        let data = account.try_borrow_data()?;
+        require!(data.len() == old_size || data.len() == size, E::Binding);
+        let mut padded = data.to_vec();
+        padded.resize(size, 0);
+        let m = Market::try_deserialize(&mut padded.as_slice())?;
+        let (expected, bump) = Pubkey::find_program_address(
+            &[
+                b"market",
+                m.config.as_ref(),
+                m.parent.as_ref(),
+                m.target.as_ref(),
+            ],
+            &crate::ID,
+        );
+        require_keys_eq!(expected, account.key(), E::Binding);
+        require!(bump == m.bump, E::Binding);
+        if data.len() == size {
+            return Ok(());
+        }
+        drop(data);
+        let top_up = Rent::get()?
+            .minimum_balance(size)
+            .saturating_sub(account.lamports());
+        if top_up > 0 {
+            anchor_lang::system_program::transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.key(),
+                    anchor_lang::system_program::Transfer {
+                        from: ctx.accounts.payer.to_account_info(),
+                        to: account.clone(),
+                    },
+                ),
+                top_up,
+            )?;
+        }
+        account.resize(size)?;
+        account.try_borrow_mut_data()?.copy_from_slice(&padded);
+        Ok(())
+    }
+
+    /// Only changes the default for future markets. Existing LP/trader terms are immutable.
+    pub fn set_fee(ctx: Context<Administer>, fee_bps: u16) -> Result<()> {
+        require_keys_eq!(
+            ctx.accounts.authority.key(),
+            ctx.accounts.config.admin,
+            E::Unauthorized
+        );
+        require!(fee_bps <= math::MAX_FEE_BPS, E::Math);
+        ctx.accounts.config.fee_bps = fee_bps;
+        Ok(())
+    }
     pub fn initialize_config(
         ctx: Context<InitializeConfig>,
+        reporter: Pubkey,
+        pause_authority: Pubkey,
+        max_trade: u64,
+        max_deposits: u64,
+    ) -> Result<()> {
+        require!(
+            reporter != Pubkey::default() && pause_authority != Pubkey::default(),
+            E::Binding
+        );
+        require!(
+            max_trade > 0
+                && max_trade <= math::MAX_B
+                && max_deposits >= max_trade
+                && max_deposits <= math::MAX_Q,
+            E::Math
+        );
+        let c = &mut ctx.accounts.config;
+        c.creator = ctx.accounts.admin.key();
+        c.admin = c.creator;
+        c.reporter = reporter;
+        c.pause_authority = pause_authority;
+        c.mint = ctx.accounts.mint.key();
+        c.max_trade = max_trade;
+        c.max_deposits = max_deposits;
+        c.bump = ctx.bumps.config;
+        Ok(())
+    }
+    pub fn initialize_sol_config(
+        ctx: Context<InitializeSolConfig>,
         reporter: Pubkey,
         pause_authority: Pubkey,
         max_trade: u64,
@@ -189,13 +274,7 @@ pub mod fork_contracts {
                 && initial_log_odds_e6.unsigned_abs() <= 16_000_000,
             E::Math
         );
-        let offset = u64::try_from(
-            (b as u128)
-                .checked_mul(initial_log_odds_e6.unsigned_abs() as u128)
-                .ok_or(E::Math)?
-                / 1_000_000,
-        )
-        .map_err(|_| E::Math)?;
+        let offset = math::initial_offset(b, initial_log_odds_e6)?;
         let m = &mut ctx.accounts.market;
         m.config = ctx.accounts.config.key();
         m.parent = ctx.accounts.parent.key();
@@ -207,8 +286,23 @@ pub mod fork_contracts {
         m.offset_no = if initial_log_odds_e6 < 0 { offset } else { 0 };
         m.status = Status::Funding;
         m.bump = ctx.bumps.market;
+        m.fee_bps = ctx.accounts.config.fee_bps;
         m.required_subsidy()?;
         Ok(())
+    }
+    /// Size depth from a funding budget before anyone contributes. Both depth
+    /// and starting probability remain immutable, including throughout Funding.
+    pub fn create_market_for_budget(
+        ctx: Context<CreateMarket>,
+        budget: u64,
+        initial_log_odds_e6: i64,
+    ) -> Result<()> {
+        require!(budget <= ctx.accounts.config.max_deposits, E::Math);
+        create_market(
+            ctx,
+            math::depth_for_budget(budget, initial_log_odds_e6)?,
+            initial_log_odds_e6,
+        )
     }
     pub fn start_market(ctx: Context<SyncMarket>) -> Result<()> {
         let m = &mut ctx.accounts.market;
@@ -285,7 +379,7 @@ pub mod fork_contracts {
                 },
             ),
             amount,
-            6,
+            ctx.accounts.mint.decimals,
         )
     }
     pub fn fund_lp(ctx: Context<LpFunds>, amount: u64) -> Result<()> {
@@ -314,7 +408,7 @@ pub mod fork_contracts {
                 },
             ),
             amount,
-            6,
+            ctx.accounts.mint.decimals,
         )
     }
     pub fn quote(ctx: Context<Quote>, yes: bool, buy: bool, amount: u64) -> Result<u64> {
@@ -339,12 +433,14 @@ pub mod fork_contracts {
         }
         let y = add(m.yes, m.offset_yes)?;
         let n = add(m.no, m.offset_no)?;
-        let cost = math::quote(y, n, m.b, yes, buy, amount)?;
+        let (cost, fee) =
+            math::with_fee(math::quote(y, n, m.b, yes, buy, amount)?, m.fee_bps, buy)?;
         emit!(QuoteEvent {
             market: m.key(),
             amount,
             cost,
-            yes_price_e18: math::price(y, n, m.b)?
+            yes_price_e18: math::price(y, n, m.b)?,
+            fee,
         });
         Ok(cost)
     }
@@ -362,7 +458,7 @@ pub mod fork_contracts {
         );
         let t = &mut ctx.accounts.trader;
         require!(!t.claimed, E::Claimed);
-        let cost = math::quote(
+        let gross = math::quote(
             add(m.yes, m.offset_yes)?,
             add(m.no, m.offset_no)?,
             m.b,
@@ -370,6 +466,7 @@ pub mod fork_contracts {
             buy,
             amount,
         )?;
+        let (cost, fee) = math::with_fee(gross, m.fee_bps, buy)?;
         let (held, total) = if yes {
             (&mut t.yes, &mut m.yes)
         } else {
@@ -388,6 +485,7 @@ pub mod fork_contracts {
             t.cash = add(t.cash, cost)?;
             m.cash = add(m.cash, cost)?;
         }
+        m.fees_accrued = add(m.fees_accrued, fee)?;
         m.reserves_ok()?;
         m.sync(&ctx.accounts.parent, &ctx.accounts.target)?;
         emit!(TradeEvent {
@@ -397,7 +495,8 @@ pub mod fork_contracts {
             buy,
             amount,
             cash_flow: cost,
-            conditional_cash: t.cash
+            conditional_cash: t.cash,
+            fee,
         });
         Ok(())
     }
@@ -496,6 +595,10 @@ fn withdraw<'info>(
             &[seeds],
         ),
         amount,
-        6,
+        if *mint.key == anchor_spl::token::spl_token::native_mint::ID {
+            9
+        } else {
+            6
+        },
     )
 }

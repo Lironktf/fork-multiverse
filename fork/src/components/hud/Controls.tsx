@@ -10,6 +10,7 @@ import { focusCurrent, navigateTo, requestNextForks } from "@/lib/client/actions
 import { ORIGIN_ID } from "@/lib/domain/verse";
 import { SavedVerses } from "@/components/verse/SavedVerses";
 import { OpenRules } from "@/components/solana/OpenRules";
+import { useSolTrading } from "@/lib/client/sol";
 import { WalletButton } from "@/components/solana/WalletButton";
 import { useQuery } from "@tanstack/react-query";
 
@@ -105,6 +106,7 @@ function Settings() {
 export function TopRight() {
   const panel = useUI((s) => s.panel);
   const set = useUI((s) => s.set);
+  const solTrading = useSolTrading();
   return (
     <div className="pointer-events-auto relative flex items-center gap-0.5 rounded-lg border border-line bg-surface/80 p-0.5 backdrop-blur">
       <button className="ibtn" onClick={() => set({ palette: true })} aria-label="Search (⌘K)" title="Search  ⌘K">
@@ -129,6 +131,7 @@ export function TopRight() {
         </Popover.Portal>
       </Popover.Root>
       <OpenRules />
+      {solTrading && <button className="ibtn !px-3" onClick={() => useUI.getState().set({ workspaceTab: "trade" })} aria-label="Trade markets">Trade</button>}
       <span className="mx-0.5 h-4 w-px bg-line" />
       <WalletButton />
       <AnimatePresence>

@@ -10,7 +10,7 @@ import { SOLANA_CLUSTER } from "./SolanaProvider";
 
 export const short = (k: string) => `${k.slice(0, 4)}…${k.slice(-4)}`;
 
-export function WalletButton() {
+export function WalletButton({ showLabel = false }: { showLabel?: boolean }) {
   const {
     wallets,
     wallet,
@@ -58,7 +58,9 @@ export function WalletButton() {
     if (SOLANA_CLUSTER === "localnet") {
       useUI
         .getState()
-        .toast("Open FORK Positions and choose Get mock collateral + SOL.");
+        .toast(
+          "Fund this wallet from your local validator using solana airdrop.",
+        );
       return;
     }
     try {
@@ -87,6 +89,7 @@ export function WalletButton() {
           data-active={connected}
         >
           <Wallet size={14} />
+          {showLabel && !connected && <span>Connect wallet</span>}
           {connected && publicKey && (
             <span className="num hidden text-[10.5px] md:inline">
               {short(publicKey.toBase58())}

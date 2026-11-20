@@ -132,6 +132,8 @@ function Workspace({ openAtlas, atlasFork }: { openAtlas: () => void; atlasFork:
   const tablet = useMedia("(min-width: 760px)");
   const [discovery, setDiscovery] = useState(true);
   const [sheet, setSheet] = useState<"forecast" | "basket" | "discover">(atlasFork ? "forecast" : "basket");
+  const workspaceTab = useUI(s => s.workspaceTab);
+  useEffect(() => { if (workspaceTab === "trade") setSheet("forecast"); }, [workspaceTab]);
   useEffect(() => {
     if (atlasFork) setSheet("forecast");
   }, [atlasFork]);
@@ -149,7 +151,7 @@ function Workspace({ openAtlas, atlasFork }: { openAtlas: () => void; atlasFork:
       const w = window.innerWidth;
       const h = window.innerHeight;
       engine.insets = tablet
-        ? { l: discovery && desktop ? Math.min(316, w * 0.3) + 24 : 24, r: Math.min(352, w * (desktop ? 0.34 : 0.4)) + 24, t: desktop ? 60 : 140, b: 76 }
+        ? { l: discovery && desktop ? Math.min(316, w * 0.3) + 24 : 24, r: Math.min(workspaceTab === "trade" ? 400 : 352, w * 0.4) + 24, t: desktop ? 60 : 140, b: 76 }
         : { l: 0, r: 0, t: 150, b: h * 0.5 };
     };
     apply();
@@ -159,7 +161,7 @@ function Workspace({ openAtlas, atlasFork }: { openAtlas: () => void; atlasFork:
     }
     window.addEventListener("resize", apply);
     return () => window.removeEventListener("resize", apply);
-  }, [tablet, desktop, discovery]);
+  }, [tablet, desktop, discovery, workspaceTab]);
 
   return (
     <>
@@ -195,13 +197,13 @@ function Workspace({ openAtlas, atlasFork }: { openAtlas: () => void; atlasFork:
               )}
             </AnimatePresence>
             {/* right: forecast + basket */}
-            <div className={`absolute bottom-[78px] right-4 flex w-[min(352px,40vw)] flex-col justify-end gap-3 ${desktop ? "top-[64px]" : "top-[150px]"}`}>
+            <div className={`absolute bottom-[78px] right-4 flex ${workspaceTab === "trade" ? "w-[min(400px,40vw)]" : "w-[min(352px,40vw)]"} flex-col justify-end gap-3 ${desktop ? "top-[64px]" : "top-[150px]"}`}>
               <div className="flex min-h-[160px] flex-1 flex-col justify-start">
                 <ForecastPanel />
               </div>
-              <div className="flex max-h-[48%] shrink-0 flex-col">
+              {workspaceTab !== "trade" && <div className="flex max-h-[48%] shrink-0 flex-col">
                 <Basket />
-              </div>
+              </div>}
             </div>
             {/* bottom */}
             <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-col items-center gap-3">

@@ -6,6 +6,42 @@ pub const LN2: u128 = 693_147_180_559_945_309;
 pub const MAX_B: u64 = 1_000_000_000_000;
 pub const MAX_Q: u64 = 1_000_000_000_000_000;
 pub const ROUNDING: u64 = 4;
+/// Maximum fee on the collateral value of a trade, snapshotted at creation.
+pub const MAX_FEE_BPS: u16 = 1_000;
+
+/// Round up so splitting a trade cannot erase its fee. Zero proceeds have zero fee.
+pub fn trade_fee(gross: u64, fee_bps: u16) -> Result<u64> {
+    require!(fee_bps <= MAX_FEE_BPS, E::Math);
+    narrow(plus(mul(gross as u128, fee_bps as u128)?, 9_999)? / 10_000)
+}
+
+pub fn with_fee(gross: u64, fee_bps: u16, buy: bool) -> Result<(u64, u64)> {
+    let fee = trade_fee(gross, fee_bps)?;
+    Ok((
+        if buy {
+            add(gross, fee)?
+        } else {
+            sub(gross, fee)?
+        },
+        fee,
+    ))
+}
+
+pub fn initial_offset(b: u64, log_odds_e6: i64) -> Result<u64> {
+    require!(log_odds_e6.unsigned_abs() <= 16_000_000, E::Math);
+    narrow(mul(b as u128, log_odds_e6.unsigned_abs() as u128)? / 1_000_000)
+}
+
+/// Conservative depth for a fixed budget and initial probability. At MAX_B the
+/// offset is exact; +2 covers flooring/series error (<1.02 micro-units).
+/// A final exact subsidy check is mandatory, independently of this estimate.
+pub fn depth_for_budget(budget: u64, log_odds_e6: i64) -> Result<u64> {
+    let slope = add(potential(initial_offset(MAX_B, log_odds_e6)?, 0, MAX_B)?, 2)?;
+    let b = narrow(mul(sub(budget, ROUNDING)? as u128, MAX_B as u128)? / slope as u128)?.min(MAX_B);
+    let required = add(potential(initial_offset(b, log_odds_e6)?, 0, b)?, ROUNDING)?;
+    require!(required <= budget, E::Insolvent);
+    Ok(b)
+}
 pub fn add(a: u64, b: u64) -> Result<u64> {
     a.checked_add(b).ok_or_else(|| error!(E::Math))
 }
@@ -89,6 +125,31 @@ pub fn prorata(pool: u64, shares: u64, total: u64) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn fees_and_funding_bounds() {
+        for bps in [0, 1, 100, MAX_FEE_BPS] {
+            for amount in [0, 1, 9_999, 10_000, MAX_Q, u64::MAX] {
+                let fee = trade_fee(amount, bps).unwrap();
+                assert!(fee <= amount);
+                assert_eq!(fee as u128, (amount as u128 * bps as u128).div_ceil(10_000));
+                assert_eq!(with_fee(amount, bps, false).unwrap().0, amount - fee);
+            }
+        }
+        assert!(trade_fee(1, MAX_FEE_BPS + 1).is_err());
+        assert!(with_fee(u64::MAX, 1, true).is_err());
+        assert!(depth_for_budget(ROUNDING, 0).is_err());
+        for odds in [-16_000_000, -2_197_225, -1, 0, 1, 2_197_225, 16_000_000] {
+            for budget in [20_000_000, 80_000_000, MAX_B, MAX_Q] {
+                let b = depth_for_budget(budget, odds).unwrap();
+                let required =
+                    potential(initial_offset(b, odds).unwrap(), 0, b).unwrap() + ROUNDING;
+                assert!(required <= budget);
+                if b < MAX_B {
+                    assert!(budget - required <= 20);
+                }
+            }
+        }
+    }
     #[test]
     fn precision_and_cycle_measurements() {
         let mut max_error = 0f64;

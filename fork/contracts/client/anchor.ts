@@ -1,5 +1,7 @@
 // Anchor 1.1.2 requires web3.js 1.x. Keep that compatibility boundary in this module/scripts.
 import anchor from "@anchor-lang/core";
+import { devnetFetch } from "./devnet-fetch.js";
+import { validateNetwork } from "./network.js";
 import { readFileSync } from "node:fs";
 import {
   Connection,
@@ -43,7 +45,13 @@ export function makeClient(
     throw new Error("Only local validator or devnet RPC supported");
   if (!local && process.env.ENABLE_DEVNET !== "yes")
     throw new Error("Set ENABLE_DEVNET=yes for explicit devnet execution");
-  const connection = new Connection(rpc, "confirmed");
+  const connection = new Connection(rpc, {
+    commitment: "confirmed",
+    // The public endpoint is rate limited: serialize and back off. Helius takes normal fetch.
+    ...(local || u.hostname !== "api.devnet.solana.com"
+      ? {}
+      : { fetch: devnetFetch(), disableRetryOnRateLimit: true }),
+  });
   const provider = new anchor.AnchorProvider(
     connection,
     new anchor.Wallet(payer),
@@ -60,6 +68,11 @@ export function makeClient(
     instructions: TransactionInstruction[],
     signers: Keypair[] = [],
   ): Promise<string> {
+    validateNetwork(
+      local ? "localnet" : "devnet",
+      rpc,
+      await connection.getGenesisHash(),
+    );
     const tx = new Transaction().add(...instructions);
     tx.feePayer = payer.publicKey;
     tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;

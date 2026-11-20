@@ -12,8 +12,10 @@ import { short } from "./WalletButton";
 const field =
   "min-w-0 rounded-md border border-line bg-black/20 px-2 py-1.5 text-[11px] text-ink outline-none focus:border-accent/50";
 
-const live = (e?: ForkEvent) => !!e && e.source === "gemini" && !!e.externalMarketId;
-export const outcomeLabel = (e: ForkEvent, outcome: string) => `${e.title} → ${outcome}`;
+const live = (e?: ForkEvent) =>
+  !!e && e.source === "gemini" && !!e.externalMarketId;
+export const outcomeLabel = (e: ForkEvent, outcome: string) =>
+  `${e.title} → ${outcome}`;
 
 /**
  * "If A happens, buy B" for the current world.
@@ -26,7 +28,11 @@ export const outcomeLabel = (e: ForkEvent, outcome: string) => `${e.title} → $
  */
 export function IfThenBuy() {
   const { verse, target, events } = useUniverse(
-    useShallow((s) => ({ verse: s.verses[s.currentVerseId], target: s.target, events: s.events })),
+    useShallow((s) => ({
+      verse: s.verses[s.currentVerseId],
+      target: s.target,
+      events: s.events,
+    })),
   );
   const rulesQ = useRules();
   const actions = useRuleActions();
@@ -60,7 +66,9 @@ export function IfThenBuy() {
   const chosen = usable.find((c) => c.key === cond) ?? usable[0];
   const targetLabel = tEvent ? outcomeLabel(tEvent, target.outcome) : "";
   // rules armed from this world for this target; every rule is listed in the top bar
-  const mine = (rulesQ.data?.rules ?? []).filter((r) => r.labels?.world === verse.id && r.labels.target === targetLabel);
+  const mine = (rulesQ.data?.rules ?? []).filter(
+    (r) => r.labels?.world === verse.id && r.labels.target === targetLabel,
+  );
 
   const arm = async () => {
     if (!chosen || !tEvent) return;
@@ -74,7 +82,11 @@ export function IfThenBuy() {
         against,
         shares: Number(shares),
         maxCost: Number(maxCost),
-        labels: { condition: chosen.label, target: targetLabel, world: verse.id },
+        labels: {
+          condition: chosen.label,
+          target: targetLabel,
+          world: verse.id,
+        },
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -87,7 +99,8 @@ export function IfThenBuy() {
     <div className="mt-4 border-t border-line pt-3" data-testid="if-then-buy">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-ink">
-          <Zap size={12} className="text-accent" aria-hidden /> If this happens, buy
+          <Zap size={12} className="text-accent" aria-hidden /> If this happens,
+          buy
         </span>
         <span className="tag tag-custom">solana · mock USDC</span>
       </div>
@@ -98,16 +111,23 @@ export function IfThenBuy() {
         </p>
       ) : !usable.length ? (
         <p className="mt-1.5 text-[11px] leading-relaxed text-ink-3">
-          Add a live Gemini event as an assumption (a YES outcome) and fork. Then you can say “if that happens, buy{" "}
+          Add a live Gemini event as an assumption (a YES outcome) and fork.
+          Then you can say “if that happens, buy{" "}
           <span className="text-ink-2">{target.outcome}</span> here”.
-          {conditions.length > 0 && " Assumptions set to NO can’t be used as the trigger."}
+          {conditions.length > 0 &&
+            " Assumptions set to NO can’t be used as the trigger."}
         </p>
       ) : (
         <>
           <div className="mt-2 space-y-1.5 text-[11px] text-ink-2">
             <label className="flex items-center gap-2">
               <span className="w-9 shrink-0 text-ink-3">If</span>
-              <select className={`${field} w-full`} aria-label="Condition" value={chosen?.key} onChange={(e) => setCond(e.target.value)}>
+              <select
+                className={`${field} w-full`}
+                aria-label="Condition"
+                value={chosen?.key}
+                onChange={(e) => setCond(e.target.value)}
+              >
                 {usable.map((c) => (
                   <option key={c.key} value={c.key}>
                     {c.label}
@@ -117,31 +137,67 @@ export function IfThenBuy() {
             </label>
             <label className="flex items-center gap-2">
               <span className="w-9 shrink-0 text-ink-3">hits</span>
-              <input className={`${field} w-16`} aria-label="Odds threshold" inputMode="numeric" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+              <input
+                className={`${field} w-16`}
+                aria-label="Odds threshold"
+                inputMode="numeric"
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+              />
               <span className="text-ink-3">% odds on Gemini,</span>
             </label>
             <div className="flex items-center gap-2">
               <span className="w-9 shrink-0 text-ink-3">buy</span>
-              <input className={`${field} w-14`} aria-label="Shares" inputMode="numeric" value={shares} onChange={(e) => setShares(e.target.value)} />
-              <select className={`${field} min-w-0 flex-1`} aria-label="Direction" value={against ? "against" : "for"} onChange={(e) => setAgainst(e.target.value === "against")}>
+              <input
+                className={`${field} w-14`}
+                aria-label="Shares"
+                inputMode="numeric"
+                value={shares}
+                onChange={(e) => setShares(e.target.value)}
+              />
+              <select
+                className={`${field} min-w-0 flex-1`}
+                aria-label="Direction"
+                value={against ? "against" : "for"}
+                onChange={(e) => setAgainst(e.target.value === "against")}
+              >
                 <option value="for">shares of “{target.outcome}”</option>
-                <option value="against">shares against “{target.outcome}”</option>
+                <option value="against">
+                  shares against “{target.outcome}”
+                </option>
               </select>
             </div>
             <label className="flex items-center gap-2">
               <span className="w-9 shrink-0 text-ink-3">max</span>
-              <input className={`${field} w-16`} aria-label="Max cost" inputMode="decimal" value={maxCost} onChange={(e) => setMaxCost(e.target.value)} />
+              <input
+                className={`${field} w-16`}
+                aria-label="Max cost"
+                inputMode="decimal"
+                value={maxCost}
+                onChange={(e) => setMaxCost(e.target.value)}
+              />
               <span className="text-ink-3">USDC total</span>
             </label>
           </div>
-          <button className="btn mt-2.5 !h-7 w-full !text-[11px]" onClick={() => void arm()} disabled={busy || !threshold} data-testid="arm-if-then">
-            {busy ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
+          <button
+            className="btn mt-2.5 !h-7 w-full !text-[11px]"
+            onClick={() => void arm()}
+            disabled={busy || !threshold}
+            data-testid="arm-if-then"
+          >
+            {busy ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : (
+              <Zap size={11} />
+            )}
             {busy ? "Setting up on Solana…" : "Arm"}
           </button>
           <p className="mt-1.5 text-[10px] leading-relaxed text-ink-3">
-            Each share pays 1 USDC if “{target.outcome}” wins. If the “if” never happens, the bet is cancelled and
-            the money comes back. Runs from FORK’s auto-trader{rulesQ.data?.executor ? ` (${short(rulesQ.data.executor)})` : ""}, not your
-            wallet.
+            Each share pays 1 USDC if “{target.outcome}” wins. If the “if” never
+            happens, the bet is cancelled and the money comes back. Runs from
+            FORK’s auto-trader
+            {rulesQ.data?.executor ? ` (${short(rulesQ.data.executor)})` : ""},
+            not your wallet.
           </p>
           {error && (
             <p className="mt-1.5 text-[10.5px] text-down" role="alert">
@@ -154,16 +210,37 @@ export function IfThenBuy() {
       {mine.length > 0 && (
         <ul className="mt-2 space-y-1">
           {mine.map((r) => (
-            <li key={r.id} className="num flex items-center justify-between gap-2 text-[10px]" data-testid="if-then-rule" data-status={r.status}>
-              <span className="min-w-0 truncate text-ink-3" title={r.labels?.condition}>
-                {r.status === "armed" ? `waiting · now ${ruleValue(r, r.last)}` : r.status === "fired" ? `bought at ${ruleValue(r, r.fired)}` : r.error ?? r.status}
+            <li
+              key={r.id}
+              className="num flex items-center justify-between gap-2 text-[10px]"
+              data-testid="if-then-rule"
+              data-status={r.status}
+            >
+              <span
+                className="min-w-0 truncate text-ink-3"
+                title={r.labels?.condition}
+              >
+                {r.status === "armed"
+                  ? `waiting · now ${ruleValue(r, r.last)}`
+                  : r.status === "fired"
+                    ? `bought at ${ruleValue(r, r.fired)}`
+                    : (r.error ?? r.status)}
               </span>
               {r.signature ? (
-                <a className="inline-flex shrink-0 items-center gap-0.5 text-up" href={explorerTx(r.signature)} target="_blank" rel="noreferrer">
+                <a
+                  className="inline-flex shrink-0 items-center gap-0.5 text-up"
+                  href={explorerTx(r.signature)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   bought <ExternalLink size={9} />
                 </a>
               ) : (
-                <span className={`shrink-0 uppercase ${r.status === "armed" ? "text-accent" : "text-ink-3"}`}>{r.status}</span>
+                <span
+                  className={`shrink-0 uppercase ${r.status === "armed" ? "text-accent" : "text-ink-3"}`}
+                >
+                  {r.status}
+                </span>
               )}
             </li>
           ))}

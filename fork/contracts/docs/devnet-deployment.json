@@ -1,0 +1,139 @@
+{
+  "verifiedAt": "2026-11-20T08:36:19.327Z",
+  "program": "2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv",
+  "deploymentSignature": "4oShoS5rn4RgRbZZSsnPVn77DrwCX6cdgYu2XdYwvJSHr2PvgTVMTGp4ABWAi87LAtLfS9a81qenPQqfv3KNUgSL",
+  "binarySha256": "507ee8c5d4cf511ec4963606538757d4c98cf26a9cdbbcb94f58be53c8181f13",
+  "deployedBytesMatch": true,
+  "application": {
+    "cluster": "devnet",
+    "rpc": "https://api.devnet.solana.com",
+    "genesis": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+    "program": "2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv",
+    "config": "8J27nxy5ix7Wekv2YUNFBA4VVckC6oB6pjMhYHnpGsCC",
+    "mint": "So11111111111111111111111111111111111111112",
+    "idlHash": "e575e90b8481b68c938dfd2d81eff4738175c00aef3379163e05cefb689c6b28",
+    "markets": [
+      {
+        "address": "BxdnjhoJEppnDZgnPUUacfB188ozZr1zSVLdFi5Quxod",
+        "parent": "E8TT4696uLiEiHGMtoTAtuDy45unRzRwNGrFxqgfKTHA",
+        "target": "ERfeWcgTsqLYaf5hCqY9tWqaRyr6uUr5Xk6DPimPGkdj",
+        "vault": "4DDQtfmJuQvBiMbtgeYaUkMsxzY3mNesHtZ1YmfXBDt1",
+        "bindings": [
+          {
+            "ticker": "BRENT2611272200",
+            "instrument": "GEMI-BRENT2611272200-HI90",
+            "closeTs": 1795816200,
+            "observationTs": 1795816800,
+            "termsHash": "e117d7654b9409304544bfb9cf9c00d172048c24ddb4830e0527d252b6b6ce65"
+          },
+          {
+            "ticker": "COPPER2611272200",
+            "instrument": "GEMI-COPPER2611272200-HI5D58",
+            "closeTs": 1795816200,
+            "observationTs": 1795816800,
+            "termsHash": "f5915044cc86da4a79204d634852495752c25d11441bd9148687f7b84f1105c3"
+          }
+        ]
+      }
+    ]
+  },
+  "collateral": {
+    "symbol": "SOL",
+    "mint": "So11111111111111111111111111111111111111112",
+    "decimals": 9,
+    "mintAuthority": null,
+    "freezeAuthority": null,
+    "vaultAmountLamports": "99999999",
+    "vaultLamports": 101488439,
+    "rentReserveLamports": "1488440",
+    "lpDepositsLamports": "99999999",
+    "marketStatus": "pending",
+    "started": true
+  },
+  "transactions": [
+    {
+      "label": "initialize config",
+      "signature": "2VqxY8VitcurTWUFhDo68uT736a9KAxU119jTRLv21fu3XJvszEDgZe4tLUZg1J8eEpuFYsrQ9TDyKSdzJnV8gkT"
+    },
+    {
+      "label": "set fee for future markets",
+      "signature": "4sZGQDMTgc8FtA1hWyoU2C6BLuCjbpqTGqby3D1Nts494BrfWx5EA6pg2xF8bWXZMUK4XQmpREJfNqLnAs8EfCwg"
+    },
+    {
+      "label": "register GEMI-BRENT2611272200-HI90",
+      "signature": "5hyVoACQx9C17NXDPsF6TJoKVgEpii8XQnUjG3XRFkUYwgrHgFQLqAibWGckchrjQtfBewvTZ85c6evm82RuSa34"
+    },
+    {
+      "label": "register GEMI-COPPER2611272200-HI5D58",
+      "signature": "M4ooa9tZ724oSBHfB3NHU2udwdw7AWcgKzeBYAu5kXskxfga5r9EpDBStZiTiS5KR16tXWArne31RUNyctoLbDM"
+    },
+    {
+      "label": "create conditional market",
+      "signature": "TYSwuysY4JoDHNzbmvTbjHjqcfPDGNXHgHHqVyeYC2pSZKDq6NKsb269xCaMETxycC3Npayxv8AUamgcxSPEdy5"
+    },
+    {
+      "label": "open LP",
+      "signature": "2EzPSGH1vfQWtNV3G1mn4e8FLQxLGoSToFRCazXVfMvavLmJDpXHHFwBroR69VyzQpomuw38U2JDwzFaE5U9pHxS"
+    },
+    {
+      "label": "fund SOL liquidity",
+      "signature": "b3VinhY3EcQXRffd9UT9LHph8DWf4MtrwC2jJH2vDbbdGyaJew4LSeWw6cQz7oRWq85sT5JPeRFCW2RofersFCP"
+    },
+    {
+      "label": "start market",
+      "signature": "3n8wSEcGqbVBnkkXA94bAcbpu5W3fZWETh1BbniTCXkrnfJ6RHNXLZG19oxtZ4rhKFWPhG5M5w1HRLXt591eTL5G"
+    }
+  ],
+  "transactionStatuses": [
+    {
+      "signature": "4oShoS5rn4RgRbZZSsnPVn77DrwCX6cdgYu2XdYwvJSHr2PvgTVMTGp4ABWAi87LAtLfS9a81qenPQqfv3KNUgSL",
+      "confirmationStatus": "finalized"
+    },
+    {
+      "signature": "2VqxY8VitcurTWUFhDo68uT736a9KAxU119jTRLv21fu3XJvszEDgZe4tLUZg1J8eEpuFYsrQ9TDyKSdzJnV8gkT",
+      "confirmationStatus": "finalized"
+    },
+    {
+      "signature": "4sZGQDMTgc8FtA1hWyoU2C6BLuCjbpqTGqby3D1Nts494BrfWx5EA6pg2xF8bWXZMUK4XQmpREJfNqLnAs8EfCwg",
+      "confirmationStatus": "finalized"
+    },
+    {
+      "signature": "5hyVoACQx9C17NXDPsF6TJoKVgEpii8XQnUjG3XRFkUYwgrHgFQLqAibWGckchrjQtfBewvTZ85c6evm82RuSa34",
+      "confirmationStatus": "finalized"
+    },
+    {
+      "signature": "M4ooa9tZ724oSBHfB3NHU2udwdw7AWcgKzeBYAu5kXskxfga5r9EpDBStZiTiS5KR16tXWArne31RUNyctoLbDM",
+      "confirmationStatus": "finalized"
+    },
+    {
+      "signature": "TYSwuysY4JoDHNzbmvTbjHjqcfPDGNXHgHHqVyeYC2pSZKDq6NKsb269xCaMETxycC3Npayxv8AUamgcxSPEdy5",
+      "confirmationStatus": "finalized"
+    },
+    {
+      "signature": "2EzPSGH1vfQWtNV3G1mn4e8FLQxLGoSToFRCazXVfMvavLmJDpXHHFwBroR69VyzQpomuw38U2JDwzFaE5U9pHxS",
+      "confirmationStatus": "finalized"
+    },
+    {
+      "signature": "b3VinhY3EcQXRffd9UT9LHph8DWf4MtrwC2jJH2vDbbdGyaJew4LSeWw6cQz7oRWq85sT5JPeRFCW2RofersFCP",
+      "confirmationStatus": "finalized"
+    },
+    {
+      "signature": "3n8wSEcGqbVBnkkXA94bAcbpu5W3fZWETh1BbniTCXkrnfJ6RHNXLZG19oxtZ4rhKFWPhG5M5w1HRLXt591eTL5G",
+      "confirmationStatus": "finalized"
+    }
+  ],
+  "operator": {
+    "address": "F5yNQQPuKcRVxkJpAtj91gMDHRga75MSwuSvUL7TowfL",
+    "balanceBeforeLamports": 5158749240,
+    "balanceAfterLamports": 4952809441,
+    "spentLamports": 205939799,
+    "approvedLimitLamports": 350000000,
+    "deploymentBufferClosed": true
+  },
+  "verification": {
+    "publicDevnet": "Upgrade, SOL config, source registration, market creation, LP funding and start confirmed; binary and backing read independently.",
+    "walletTrading": "SOL deposit/buy/sell and YES/NO/VOID payout browser tests passed on local validator.",
+    "liveSettlement": "Pending actual Gemini outcomes.",
+    "productionBrowserRead": "Passed on http://localhost:3100: exact live market opens in graph; connected wallet balances and SOL deposit controls read successfully; no transaction sent."
+  }
+}

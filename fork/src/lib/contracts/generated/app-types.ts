@@ -35,3 +35,27 @@ export interface AppConfig {
   idlHash: string;
   cluster: "localnet" | "devnet";
 }
+
+/** A read-only strategy proposal. Execution always uses a fresh wallet quote. */
+export interface StrategyResult {
+  market: string;
+  owner: string;
+  now: number;
+  reason: string;
+  model: {
+    probability: number | null;
+    lower: number;
+    upper: number;
+    samples: number;
+    reason: string;
+  };
+  proposal: null | {
+    yes: boolean;
+    buy: boolean;
+    amount: string;
+    quote: string;
+    limit: string;
+    expectedProfitMicro: number;
+    worstModelProfitMicro: number;
+  };
+}

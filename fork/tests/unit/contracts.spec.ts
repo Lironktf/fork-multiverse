@@ -6,10 +6,11 @@ import {
   claimable,
 } from "../../src/lib/contracts/amounts";
 
-test("collateral parsing and slippage preserve micro units", () => {
-  expect(formatUnits(parseUnits("12.000001"))).toBe("12.000001");
-  for (const value of ["0", "-1", "1e6", "1.0000001", "NaN", "1000001"])
+test("collateral parsing and slippage preserve lamports", () => {
+  expect(formatUnits(parseUnits("12.000001"))).toBe("12.000001000");
+  for (const value of ["0", "-1", "1e6", "1.0000000001", "NaN", "1000001"])
     expect(() => parseUnits(value)).toThrow();
+  expect(parseUnits("0.000000001")).toBe(1n);
   expect(executionLimit(BigInt(101), true, 50)).toBe(BigInt(102));
   expect(executionLimit(BigInt(101), false, 50)).toBe(BigInt(100));
   expect(() => executionLimit(BigInt(1), true, 501)).toThrow();
@@ -30,4 +31,39 @@ test("profitable early exit remains locked and VOID returns principal only", () 
     BigInt(79_000_000),
   );
   expect(claimable("void", { ...trader, claimed: true })).toBe(BigInt(0));
+});
+
+test("LP metrics distinguish conditional fee income, losses, VOID and paid claims", async () => {
+  const { liquidityMetrics } = await import(
+    "../../src/lib/contracts/liquidity"
+  );
+  const n = BigInt;
+  const market = {
+    b: n(100_000_000),
+    offsetYes: n(0),
+    offsetNo: n(0),
+    lpDeposits: n(80_000_000),
+    principal: n(100_000_000),
+    cash: n(40_000_000),
+    yes: n(100_000_000),
+    no: n(0),
+    lpPool: n(40_000_000),
+    feesAccrued: n(1_000_000),
+    started: true,
+  };
+  const lp = { deposited: n(20_000_000), paid: n(0), claimed: false };
+  const pending = liquidityMetrics(market, lp, "pending");
+  expect(pending.conditionalFees).toBe(n(250_000));
+  expect(pending.yesEquity).toBe(n(10_000_000));
+  expect(pending.canWithdraw).toBe(false);
+  expect(pending.withdrawable).toBe(n(0));
+  expect(liquidityMetrics(market, lp, "settledYes").withdrawable).toBe(
+    n(10_000_000),
+  );
+  const voided = liquidityMetrics(market, lp, "void");
+  expect(voided.withdrawable).toBe(n(20_000_000));
+  expect(voided.conditionalFees).toBe(n(0));
+  expect(
+    liquidityMetrics(market, { ...lp, claimed: true }, "void").canWithdraw,
+  ).toBe(false);
 });

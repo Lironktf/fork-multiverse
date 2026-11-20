@@ -9,6 +9,9 @@ for (const [from, to] of [
   ["../target/idl/fork_contracts.json", "idl.json"],
   ["../target/types/fork_contracts.ts", "fork_contracts.ts"],
   ["../client/app-types.ts", "app-types.ts"],
+  ["../client/network.ts", "network.ts"],
+  ["../client/native-sol.ts", "native-sol.ts"],
+  ["../research/lmsr.ts", "lmsr.ts"],
 ]) {
   writeFileSync(
     new URL(to!, target),

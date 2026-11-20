@@ -4,7 +4,7 @@ Implementation specification, 2026-11-18. Scope: one immutable binary Gemini
 contract A and one distinct binary contract B; activation is A=YES. Each admin
 creates a namespaced configuration (there is no front-runnable global singleton).
 Positions and LP interests are nontransferable PDA accounts. SPL Token, six
-decimals only; no Token-2022 extensions. Protocol fees are fixed at zero.
+decimals only; no Token-2022 extensions. LP fees are snapshotted at market creation; see [LP economics](liquidity.md).
 
 ## Accounts and authority
 
@@ -24,7 +24,7 @@ Trader and LP PDAs use `[trader|lp, market, owner]`.
 
 Amounts and shares are millionths (one whole winning share pays one USDC).
 For trader i, let D_i be cumulative deposits, K_i net trading payments (buys
-minus sells, including conservative rounding), c_i=D_i-K_i >= 0, and y_i,n_i
+minus sells, including conservative rounding and conditional LP fees), c_i=D_i-K_i >= 0, and y_i,n_i
 the nonnegative holdings. No shorting or borrowing. Every trade updates c and
 holdings atomically; selling can realize a contingent profit but transfers no
 tokens. All trader withdrawals remain locked until a terminal outcome, including
@@ -42,10 +42,10 @@ Terminal snapshot fixes trader liability and LP equity; each withdrawal reduces
 the corresponding remaining liability. Claimed accounts cannot claim again.
 LP activated equity is distributed pro rata with integer floors, independently
 of claim order; at most (number of LPs - 1) micro-USDC remains as locked dust.
-No fee collector or privileged drain exists. On VOID, rounding is refunded too.
+No fee collector or privileged drain exists. On VOID, fees and rounding are refunded too.
 
 LPs may fund and withdraw during Funding. Starting requires the full subsidy.
-LP ownership, b and initial offsets freeze at start; no live LP minting or
+LP ownership freezes at start; b, offsets and the fee are fixed at creation; no live LP minting or
 withdrawal. This avoids share dilution, retroactive risk transfers and the need
 to price unresolved conditional LP equity. More reserves can be funded before
 start without changing b. Active liquidity changes are deliberately out of scope.
@@ -67,7 +67,8 @@ initial log odds at most 16, inventory at most 10^15. The scalar potential is
 rounded down to micro-USDC; buys add four micro-USDC and sells subtract up to
 four. This is a documented rounding reserve, not a percentage protocol fee.
 It prevents extracting rounding value by repeated cycles; identical reverse
-trades telescope in the common potential and lose at most eight micro-USDC.
+trades telescope in the common potential and lose at most eight micro-USDC
+before the additional percentage fee.
 Numerical measurements and bounds are recorded with the test results.
 
 ## Lifecycle and timing

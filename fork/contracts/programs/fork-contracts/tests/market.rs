@@ -59,6 +59,15 @@ struct H {
 }
 impl H {
     fn new(log_odds: i64) -> Self {
+        Self::configured(log_odds, 0, None)
+    }
+    fn configured(log_odds: i64, fee_bps: u16, budget: Option<u64>) -> Self {
+        Self::with_collateral(log_odds, fee_bps, budget, false)
+    }
+    fn native() -> Self {
+        Self::with_collateral(0, 100, None, true)
+    }
+    fn with_collateral(log_odds: i64, fee_bps: u16, budget: Option<u64>, native: bool) -> Self {
         let mut svm = LiteSVM::new();
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../target/deploy/fork_contracts.so");
@@ -72,27 +81,58 @@ impl H {
         svm.set_sysvar(&clock);
         let users: Vec<_> = (0..6).map(|_| Keypair::new()).collect();
         for u in &users {
-            svm.airdrop(&u.pubkey(), 10_000_000_000).unwrap();
+            svm.airdrop(&u.pubkey(), 100_000_000_000).unwrap();
         }
         let mk = Keypair::new();
-        let mint = mk.pubkey();
-        send(
-            &mut svm,
-            &users[0],
-            &[&mk],
-            &[
-                create_account(&users[0].pubkey(), &mint, svm_rent(82), 82, &spl_token::ID),
-                spl_token::instruction::initialize_mint2(
-                    &spl_token::ID,
-                    &mint,
-                    &users[0].pubkey(),
-                    None,
-                    6,
-                )
-                .unwrap(),
-            ],
-        )
-        .unwrap();
+        let mint = if native {
+            spl_token::native_mint::ID
+        } else {
+            mk.pubkey()
+        };
+        if native {
+            let mut data = vec![0; spl_token::state::Mint::LEN];
+            spl_token::state::Mint::pack(
+                spl_token::state::Mint {
+                    mint_authority: None.into(),
+                    supply: 0,
+                    decimals: 9,
+                    is_initialized: true,
+                    freeze_authority: None.into(),
+                },
+                &mut data,
+            )
+            .unwrap();
+            svm.set_account(
+                mint,
+                solana_account::Account {
+                    lamports: svm_rent(data.len()),
+                    data,
+                    owner: spl_token::ID,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            )
+            .unwrap();
+        }
+        if !native {
+            send(
+                &mut svm,
+                &users[0],
+                &[&mk],
+                &[
+                    create_account(&users[0].pubkey(), &mint, svm_rent(82), 82, &spl_token::ID),
+                    spl_token::instruction::initialize_mint2(
+                        &spl_token::ID,
+                        &mint,
+                        &users[0].pubkey(),
+                        None,
+                        6,
+                    )
+                    .unwrap(),
+                ],
+            )
+            .unwrap();
+        }
         let mut tokens = vec![];
         for u in &users {
             let t = Keypair::new();
@@ -102,7 +142,13 @@ impl H {
                 &users[0],
                 &[&t],
                 &[
-                    create_account(&users[0].pubkey(), &key, svm_rent(165), 165, &spl_token::ID),
+                    create_account(
+                        &users[0].pubkey(),
+                        &key,
+                        svm_rent(165) + if native { 10_000 * U } else { 0 },
+                        165,
+                        &spl_token::ID,
+                    ),
                     spl_token::instruction::initialize_account3(
                         &spl_token::ID,
                         &key,
@@ -110,21 +156,28 @@ impl H {
                         &u.pubkey(),
                     )
                     .unwrap(),
-                    spl_token::instruction::mint_to(
-                        &spl_token::ID,
-                        &mint,
-                        &key,
-                        &users[0].pubkey(),
-                        &[],
-                        10_000 * U,
-                    )
-                    .unwrap(),
+                    if native {
+                        spl_token::instruction::sync_native(&spl_token::ID, &key).unwrap()
+                    } else {
+                        spl_token::instruction::mint_to(
+                            &spl_token::ID,
+                            &mint,
+                            &key,
+                            &users[0].pubkey(),
+                            &[],
+                            10_000 * U,
+                        )
+                        .unwrap()
+                    },
                 ],
             )
             .unwrap();
             tokens.push(key);
         }
-        let config = pda(&[b"config", users[0].pubkey().as_ref()]);
+        let config = pda(&[
+            if native { b"config-sol" } else { b"config" },
+            users[0].pubkey().as_ref(),
+        ]);
         let mut h = Self {
             svm,
             users,
@@ -136,20 +189,50 @@ impl H {
             vault: Pubkey::default(),
             max_cu: 0,
         };
+        if native {
+            h.ok(
+                instruction(
+                    a::InitializeSolConfig {
+                        admin: h.key(0),
+                        config,
+                        mint,
+                        system_program: system_program::ID,
+                    },
+                    ix::InitializeSolConfig {
+                        reporter: h.key(5),
+                        pause_authority: h.key(0),
+                        max_trade: math::MAX_B,
+                        max_deposits: math::MAX_Q,
+                    },
+                ),
+                0,
+            );
+        } else {
+            h.ok(
+                instruction(
+                    a::InitializeConfig {
+                        admin: h.key(0),
+                        config,
+                        mint,
+                        system_program: system_program::ID,
+                    },
+                    ix::InitializeConfig {
+                        reporter: h.key(5),
+                        pause_authority: h.key(0),
+                        max_trade: math::MAX_B,
+                        max_deposits: math::MAX_Q,
+                    },
+                ),
+                0,
+            );
+        }
         h.ok(
             instruction(
-                a::InitializeConfig {
-                    admin: h.key(0),
+                a::Administer {
+                    authority: h.key(0),
                     config,
-                    mint,
-                    system_program: system_program::ID,
                 },
-                ix::InitializeConfig {
-                    reporter: h.key(5),
-                    pause_authority: h.key(0),
-                    max_trade: math::MAX_B,
-                    max_deposits: math::MAX_Q,
-                },
+                ix::SetFee { fee_bps },
             ),
             0,
         );
@@ -187,26 +270,35 @@ impl H {
             h.events[1].as_ref(),
         ]);
         h.vault = pda(&[b"vault", h.market.as_ref()]);
-        h.ok(
+        let create_accounts = a::CreateMarket {
+            admin: h.key(0),
+            config,
+            parent: h.events[0],
+            target: h.events[1],
+            mint,
+            market: h.market,
+            vault: h.vault,
+            token_program: spl_token::ID,
+            system_program: system_program::ID,
+        };
+        let create = if let Some(budget) = budget {
             instruction(
-                a::CreateMarket {
-                    admin: h.key(0),
-                    config,
-                    parent: h.events[0],
-                    target: h.events[1],
-                    mint,
-                    market: h.market,
-                    vault: h.vault,
-                    token_program: spl_token::ID,
-                    system_program: system_program::ID,
+                create_accounts,
+                ix::CreateMarketForBudget {
+                    budget,
+                    initial_log_odds_e6: log_odds,
                 },
+            )
+        } else {
+            instruction(
+                create_accounts,
                 ix::CreateMarket {
                     b: 100 * U,
                     initial_log_odds_e6: log_odds,
                 },
-            ),
-            0,
-        );
+            )
+        };
+        h.ok(create, 0);
         for i in [1, 2] {
             h.ok(
                 instruction(
@@ -621,8 +713,8 @@ fn non_balanced_price_slippage_numeric_and_position_limits() {
 }
 #[test]
 fn randomized_trade_sequences_conserve_every_micro_unit() {
-    for seed in 1..=6u64 {
-        let mut h = H::new(0);
+    for seed in 1..=12u64 {
+        let mut h = H::configured(0, if seed <= 6 { 0 } else { (seed * 71) as u16 }, None);
         h.start();
         let mut rng = seed;
         for _ in 0..80 {
@@ -971,4 +1063,322 @@ fn research_bigint_quotes_match_rust_at_numerical_boundaries() {
         "Rust/TypeScript exact differential vectors={}",
         vectors.len()
     );
+}
+
+#[test]
+fn fees_are_immutable_quoted_and_cancelled_only_on_void() {
+    for outcome in [Outcome::Yes, Outcome::No, Outcome::Invalid] {
+        let mut h = H::configured(0, 137, Some(80 * U));
+        assert!(h.m().b > 115 * U);
+        assert!(h.m().required_subsidy().unwrap() <= 80 * U);
+        h.start();
+        h.fail(
+            instruction(
+                a::Administer {
+                    authority: h.key(1),
+                    config: h.config,
+                },
+                ix::SetFee { fee_bps: 0 },
+            ),
+            1,
+            6001,
+        );
+        h.fail(
+            instruction(
+                a::Administer {
+                    authority: h.key(0),
+                    config: h.config,
+                },
+                ix::SetFee { fee_bps: 1001 },
+            ),
+            0,
+            6000,
+        );
+        h.ok(
+            instruction(
+                a::Administer {
+                    authority: h.key(0),
+                    config: h.config,
+                },
+                ix::SetFee { fee_bps: 0 },
+            ),
+            0,
+        );
+        assert_eq!(h.m().fee_bps, 137);
+        let mut fees = 0;
+        for (i, yes, buy, amount) in [
+            (1, true, true, 100 * U),
+            (2, true, true, 200 * U),
+            (1, true, false, 100 * U),
+            (2, true, false, 50 * U),
+            (1, false, true, 40 * U),
+        ] {
+            let m = h.m();
+            let gross = math::quote(
+                m.yes + m.offset_yes,
+                m.no + m.offset_no,
+                m.b,
+                yes,
+                buy,
+                amount,
+            )
+            .unwrap();
+            let (net, fee) = math::with_fee(gross, 137, buy).unwrap();
+            fees += fee;
+            let tr = h.tr(i);
+            let q = h
+                .exec(
+                    instruction(
+                        a::Quote {
+                            owner: tr.owner,
+                            config: tr.config,
+                            market: tr.market,
+                            parent: tr.parent,
+                            target: tr.target,
+                            trader: tr.trader,
+                        },
+                        ix::Quote { yes, buy, amount },
+                    ),
+                    i,
+                )
+                .unwrap();
+            assert_eq!(
+                u64::from_le_bytes(q.return_data.data.try_into().unwrap()),
+                net
+            );
+            let cash = h.t(i).cash;
+            h.fail(
+                h.trade_ix(i, yes, buy, amount, if buy { net - 1 } else { net + 1 }),
+                i,
+                6006,
+            );
+            assert_eq!(h.m().fees_accrued, fees - fee);
+            h.ok(h.trade_ix(i, yes, buy, amount, net), i);
+            assert_eq!(h.t(i).cash, if buy { cash - net } else { cash + net });
+            h.invariants();
+        }
+        assert_eq!(h.m().fees_accrued, fees);
+        assert!(fees > U);
+        h.fail(instruction(h.lf(3), ix::WithdrawLp { amount: 1 }), 3, 6008);
+        h.fail(instruction(h.lf(4), ix::FundLp { amount: U }), 4, 6004);
+        h.report(0, Outcome::Yes, NOW + 110);
+        h.report(1, outcome, NOW + 210);
+        h.sync();
+        if outcome == Outcome::Invalid {
+            assert_eq!(h.m().lp_pool, h.m().lp_deposits);
+        }
+        h.finish(outcome == Outcome::Invalid);
+        let l: Lp = h.state(h.lp_key(3));
+        h.fail(
+            instruction(h.lf(3), ix::WithdrawLp { amount: l.paid }),
+            3,
+            6009,
+        );
+        if outcome == Outcome::Invalid {
+            assert_eq!(h.balance(h.tokens[1]), 10_000 * U);
+            assert_eq!(h.balance(h.tokens[2]), 10_000 * U);
+        }
+    }
+}
+
+#[test]
+fn fee_income_does_not_guarantee_lp_profit_and_funding_cannot_dilute() {
+    let mut h = H::configured(0, 100, Some(70 * U));
+    h.ok(instruction(h.lf(3), ix::FundLp { amount: 10 * U }), 3);
+    h.ok(instruction(h.lf(4), ix::FundLp { amount: 30 * U }), 4);
+    h.ok(instruction(h.lf(3), ix::WithdrawLp { amount: 5 * U }), 3);
+    h.fail(instruction(h.sm(), ix::StartMarket {}), 0, 6007);
+    h.ok(instruction(h.lf(3), ix::FundLp { amount: 35 * U }), 3);
+    let mut attack = h.lf(3);
+    attack.owner = h.key(4);
+    h.fail(instruction(attack, ix::WithdrawLp { amount: U }), 4, 2006);
+    h.ok(instruction(h.sm(), ix::StartMarket {}), 1);
+    h.trade(1, true, true, 900 * U);
+    h.report(0, Outcome::Yes, NOW + 110);
+    h.report(1, Outcome::Yes, NOW + 210);
+    h.sync();
+    assert!(h.m().fees_accrued > 0);
+    assert!(h.m().lp_pool < h.m().lp_deposits / 5);
+    let pool = h.m().lp_pool;
+    h.finish(false);
+    let a: Lp = h.state(h.lp_key(3));
+    let b: Lp = h.state(h.lp_key(4));
+    assert_eq!(a.paid, math::prorata(pool, 40 * U, 70 * U).unwrap());
+    assert_eq!(b.paid, math::prorata(pool, 30 * U, 70 * U).unwrap());
+}
+
+#[test]
+fn v1_migration_preserves_every_byte_and_claims_and_cannot_reset_fees() {
+    for terminal in [false, true] {
+        let mut h = H::new(0);
+        h.start();
+        h.trade(1, true, true, 100 * U);
+        if terminal {
+            h.report(0, Outcome::Yes, NOW + 110);
+            h.report(1, Outcome::No, NOW + 210);
+            h.sync();
+            h.ok(instruction(h.tf(1), ix::Redeem {}), 1);
+        }
+        let mut old = h.svm.get_account(&h.market).unwrap();
+        old.data.truncate(old.data.len() - 10);
+        // Model the actual V1 rent balance so migration must execute its top-up CPI.
+        old.lamports = svm_rent(old.data.len());
+        let prefix = old.data.clone();
+        h.svm.set_account(h.market, old).unwrap();
+        let migrate = || {
+            instruction(
+                a::MigrateMarket {
+                    payer: h.key(2),
+                    market: h.market,
+                    system_program: system_program::ID,
+                },
+                ix::MigrateMarket {},
+            )
+        };
+        let ix = migrate();
+        h.ok(ix.clone(), 2);
+        assert_eq!(
+            &h.svm.get_account(&h.market).unwrap().data[..prefix.len()],
+            prefix.as_slice()
+        );
+        assert!(h.svm.get_account(&h.market).unwrap().lamports >= svm_rent(prefix.len() + 10));
+        assert_eq!(h.m().fee_bps, 0);
+        assert_eq!(h.m().fees_accrued, 0);
+        h.ok(ix, 2);
+        if terminal {
+            h.fail(instruction(h.tf(1), ix::Redeem {}), 1, 6009);
+            h.ok(instruction(h.tf(2), ix::Redeem {}), 2);
+        } else {
+            h.trade(2, false, true, 50 * U);
+            h.report(0, Outcome::No, NOW + 110);
+            h.finish(true);
+        }
+    }
+    let mut h = H::configured(0, 100, None);
+    h.start();
+    h.trade(1, true, true, U);
+    let before = h.svm.get_account(&h.market).unwrap().data;
+    let ix = instruction(
+        a::MigrateMarket {
+            payer: h.key(1),
+            market: h.market,
+            system_program: system_program::ID,
+        },
+        ix::MigrateMarket {},
+    );
+    h.ok(ix, 1);
+    assert_eq!(before, h.svm.get_account(&h.market).unwrap().data);
+    let bad = instruction(
+        a::MigrateMarket {
+            payer: h.key(1),
+            market: h.config,
+            system_program: system_program::ID,
+        },
+        ix::MigrateMarket {},
+    );
+    assert!(h.exec(bad, 1).is_err());
+}
+
+#[test]
+fn native_sol_is_fully_backed_through_trades_settlement_and_void() {
+    for (a, b) in [
+        (Outcome::Yes, Outcome::Yes),
+        (Outcome::Yes, Outcome::No),
+        (Outcome::No, Outcome::Unresolved),
+    ] {
+        let mut h = H::native();
+        h.start();
+        for (who, yes, buy, amount) in [
+            (1, true, true, 50 * U),
+            (2, false, true, 25 * U),
+            (1, true, false, 20 * U),
+        ] {
+            h.trade(who, yes, buy, amount);
+            let vault = h.svm.get_account(&h.vault).unwrap();
+            let token = spl_token::state::Account::unpack(&vault.data).unwrap();
+            assert!(token.is_native());
+            assert_eq!(vault.lamports - token.is_native.unwrap(), token.amount);
+            assert_eq!(token.amount, h.m().lp_deposits + h.m().principal);
+            h.invariants();
+        }
+        h.clock(NOW + 300);
+        h.report(0, a, NOW + 300);
+        if b != Outcome::Unresolved {
+            h.report(1, b, NOW + 300);
+        }
+        h.sync();
+        h.finish(false);
+        let vault = h.svm.get_account(&h.vault).unwrap();
+        let token = spl_token::state::Account::unpack(&vault.data).unwrap();
+        assert_eq!(vault.lamports - token.is_native.unwrap(), token.amount);
+        assert!(token.amount <= 1, "only pro-rata rounding dust may remain");
+    }
+}
+
+#[test]
+fn native_sol_rejects_custom_mints_foreign_collateral_and_unauthorized_payouts() {
+    let mut legacy = H::new(0);
+    let config = pda(&[b"config-sol", legacy.key(0).as_ref()]);
+    assert!(legacy
+        .exec(
+            instruction(
+                a::InitializeSolConfig {
+                    admin: legacy.key(0),
+                    config,
+                    mint: legacy.mint,
+                    system_program: system_program::ID
+                },
+                ix::InitializeSolConfig {
+                    reporter: legacy.key(5),
+                    pause_authority: legacy.key(0),
+                    max_trade: math::MAX_B,
+                    max_deposits: math::MAX_Q
+                }
+            ),
+            0
+        )
+        .is_err());
+    let mut h = H::native();
+    h.start();
+    let before = h.svm.get_account(&h.vault).unwrap();
+    let principal = h.m().principal;
+    let mut bad = h.tf(1);
+    bad.user_token = h.tokens[2];
+    assert!(h
+        .exec(instruction(bad, ix::Deposit { amount: U }), 1)
+        .is_err());
+    assert!(h
+        .exec(
+            instruction(
+                h.tf(1),
+                ix::Deposit {
+                    amount: 100_000 * U
+                }
+            ),
+            1
+        )
+        .is_err());
+    assert_eq!(h.m().principal, principal);
+    assert_eq!(
+        h.svm.get_account(&h.vault).unwrap().lamports,
+        before.lamports
+    );
+    assert!(h
+        .exec(instruction(h.lf(3), ix::WithdrawLp { amount: U }), 3)
+        .is_err());
+    assert!(h.exec(instruction(h.tf(1), ix::Redeem {}), 1).is_err());
+    h.clock(NOW + 300);
+    h.report(0, Outcome::No, NOW + 300);
+    h.sync();
+    let mut bad = h.tf(1);
+    bad.user_token = h.tokens[2];
+    assert!(h.exec(instruction(bad, ix::Redeem {}), 1).is_err());
+    let mut bad = h.tf(1);
+    bad.trader = h.trader_key(2);
+    assert!(h.exec(instruction(bad, ix::Redeem {}), 1).is_err());
+    assert_eq!(
+        h.svm.get_account(&h.vault).unwrap().lamports,
+        before.lamports
+    );
+    h.finish(true);
 }

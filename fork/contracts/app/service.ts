@@ -1,4 +1,13 @@
-/** Local development only: privileged signing never enters the Next.js bundle. */
+/**
+ * Loopback-only localnet/devnet service. Privileged signing never enters the Next.js bundle.
+ *
+ * Two collateral modes share this code and the same on-chain program (one instance each):
+ *  - FORK_COLLATERAL=mock (default): the service's own worthless 6-decimal mint. Powers the
+ *    "If this happens, buy" auto-buy rules, mock faucet and fee top-ups.
+ *  - FORK_COLLATERAL=sol: native devnet SOL (9 decimals, `config-sol` PDA). Powers the
+ *    graph-linked Trade tab: wallets deposit/withdraw real (devnet) SOL, markets are sized
+ *    from a 0.1 SOL budget and charge an LP fee (FORK_FEE_BPS, default 100).
+ */
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import {
@@ -19,9 +28,13 @@ import {
   createMint,
   getOrCreateAssociatedTokenAccount,
   mintTo,
+  NATIVE_MINT,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { makeClient, pda, BN, PROGRAM_ID } from "../client/anchor.js";
+import { validateNetwork } from "../client/network.js";
+import { nativeSolAccount } from "../client/native-sol.js";
+import { requiredSubsidy } from "../research/lmsr.js";
 import { catalogPage } from "../demo/catalog.js";
 import {
   bindingHash,
@@ -54,11 +67,20 @@ import type {
   MarketDescriptor,
 } from "../client/app-types.js";
 
-const directory = resolve(process.env.FORK_LOCAL_DIR ?? ".local/app");
+const SOL = process.env.FORK_COLLATERAL === "sol";
+if (!["sol", "mock", undefined].includes(process.env.FORK_COLLATERAL))
+  throw new Error("FORK_COLLATERAL must be mock or sol.");
+const directory = resolve(
+  process.env.FORK_LOCAL_DIR ??
+    process.env.FORK_APP_DIR ??
+    (SOL ? ".local/sol-app" : ".local/app"),
+);
 mkdirSync(directory, { recursive: true, mode: 0o700 });
-// Devnet: FORK_ADMIN_KEYPAIR points at a pre-funded signer kept outside the repo (mode 600).
-const keyPath =
-  process.env.FORK_ADMIN_KEYPAIR ?? join(directory, "admin.keypair.json");
+// Devnet: FORK_ADMIN_KEYPAIR (or SIGNER_PATH) points at a pre-funded signer kept outside the repo (mode 600).
+const configuredKey = process.env.FORK_ADMIN_KEYPAIR ?? process.env.SIGNER_PATH;
+if (configuredKey && !existsSync(configuredKey))
+  throw new Error("Configured operator signer does not exist.");
+const keyPath = configuredKey ?? join(directory, "admin.keypair.json");
 const admin = existsSync(keyPath)
   ? Keypair.fromSecretKey(
       Uint8Array.from(JSON.parse(readFileSync(keyPath, "utf8"))),
@@ -66,10 +88,14 @@ const admin = existsSync(keyPath)
   : Keypair.generate();
 if (!existsSync(keyPath))
   writeFileSync(keyPath, JSON.stringify([...admin.secretKey]), { mode: 0o600 });
-const { program, connection, send, local } = makeClient(admin);
-// makeClient only allows a non-local RPC for the official devnet with ENABLE_DEVNET=yes.
-// Collateral is always this service's own worthless mock mint on either cluster.
+const rpc = process.env.RPC_URL ?? "http://127.0.0.1:8899";
+const { program, connection, send, local } = makeClient(admin, rpc);
+// makeClient only allows a non-local RPC for devnet (official or Helius) with ENABLE_DEVNET=yes.
 const CLUSTER = local ? "localnet" : "devnet";
+if (!local && !configuredKey)
+  throw new Error(
+    "Devnet requires FORK_ADMIN_KEYPAIR (or SIGNER_PATH) for an existing funded operator.",
+  );
 // Devnet SOL cannot be airdropped (public faucet closed, measured 2026-11-20: HTTP 410),
 // so the admin tops up each user wallet for fees, bounded per wallet and in total.
 // ASSUMPTION: 0.02 SOL covers a session (~5,000 lamports/tx plus token-account rent);
@@ -79,7 +105,8 @@ const FEE_TOPUP_BUDGET_LAMPORTS = Number(
   process.env.FORK_FEE_TOPUP_BUDGET_LAMPORTS ?? 500_000_000,
 );
 let feeTopupSpent = 0;
-const config = pda("config", admin.publicKey);
+// SOL configurations use their own seed so legacy 6-decimal accounts can never be read as SOL.
+const config = pda(SOL ? "config-sol" : "config", admin.publicKey);
 // A single upstream gate also covers rules documents and concurrent selectors.
 let sourceQueue: Promise<unknown> = Promise.resolve();
 let lastSourceCall = 0;
@@ -98,7 +125,8 @@ const idlHash = sha256(
   readFileSync(new URL("../target/idl/fork_contracts.json", import.meta.url)),
 );
 /** RPC URLs (e.g. Helius) carry an API key in the query string: strip it from anything we log or return. */
-const redact = (text: string) => text.replace(/api-key=[^&\s"']+/gi, "api-key=REDACTED");
+const redact = (text: string) =>
+  text.replace(/api-key=[^&\s"']+/gi, "api-key=REDACTED");
 const log = (kind: string, data: unknown) =>
   appendFileSync(
     join(directory, "activity.jsonl"),
@@ -124,15 +152,20 @@ const transact = async (
   log("transaction", { label, signature });
   return signature;
 };
-const units = (n: number) => new BN(n * 1_000_000);
+const DECIMALS = SOL ? 1_000_000_000 : 1_000_000;
+const units = (n: number) => new BN(Math.round(n * DECIMALS));
 let markets: MarketDescriptor[] = [];
 let mint: PublicKey;
 let genesis: string;
 
+let deploymentCheckedAt = 0;
 async function verifyDeployment() {
+  if (Date.now() - deploymentCheckedAt < 30_000) return;
   const account = await connection.getAccountInfo(PROGRAM_ID);
   if (!account?.executable)
-    throw new Error("Program missing. Start npm run validator:live.");
+    throw new Error(
+      "Program missing on the configured network. Deploy it before starting the service.",
+    );
   const binary = readFileSync(
     new URL("../target/deploy/fork_contracts.so", import.meta.url),
   );
@@ -152,10 +185,12 @@ async function verifyDeployment() {
     throw new Error(
       "Stale deployed program: binary differs from target/deploy. Use a new validator ledger or explicitly redeploy; no ledger is reset automatically.",
     );
+  deploymentCheckedAt = Date.now();
 }
 async function initialize() {
-  await verifyDeployment();
   genesis = await connection.getGenesisHash();
+  validateNetwork(CLUSTER, rpc, genesis);
+  await verifyDeployment();
   if (existsSync(manifestPath)) {
     const saved = JSON.parse(readFileSync(manifestPath, "utf8"));
     if (
@@ -167,6 +202,10 @@ async function initialize() {
         "Stale application session: genesis/program/IDL changed. Use a new FORK_LOCAL_DIR.",
       );
     mint = new PublicKey(saved.mint);
+    if (SOL !== mint.equals(NATIVE_MINT))
+      throw new Error(
+        "This app directory holds the other collateral type. Use a separate FORK_LOCAL_DIR per collateral.",
+      );
     markets = saved.markets;
     const c = await program.account.config.fetch(config);
     if (!c.mint.equals(mint) || !c.admin.equals(admin.publicKey))
@@ -188,10 +227,33 @@ async function initialize() {
       throw new Error(
         "Configuration authority changed; cannot resume initialization.",
       );
-    mint =
-      existing?.mint ??
-      (await createMint(connection, admin, admin.publicKey, null, 6));
-    if (!existing)
+    if (SOL) {
+      mint = NATIVE_MINT;
+      if (existing && !existing.mint.equals(NATIVE_MINT))
+        throw new Error("SOL config has incompatible collateral.");
+    } else
+      mint =
+        existing?.mint ??
+        (await createMint(connection, admin, admin.publicKey, null, 6));
+    if (!existing && SOL)
+      await transact(
+        "initialize SOL config",
+        await program.methods
+          .initializeSolConfig(
+            admin.publicKey,
+            admin.publicKey,
+            units(10),
+            units(1000),
+          )
+          .accountsStrict({
+            admin: admin.publicKey,
+            config,
+            mint,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction(),
+      );
+    else if (!existing)
       await transact(
         "initialize config",
         await program.methods
@@ -211,6 +273,18 @@ async function initialize() {
       );
     save();
   }
+  // LP fee for future markets. Mock collateral keeps 0 by default so the if-then flow is unchanged.
+  const feeBps = Number(process.env.FORK_FEE_BPS ?? (SOL ? "100" : "0"));
+  if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 1000)
+    throw new Error("FORK_FEE_BPS must be 0..1000");
+  if ((await program.account.config.fetch(config)).feeBps !== feeBps)
+    await transact(
+      "set fee for future markets",
+      await program.methods
+        .setFee(feeBps)
+        .accountsStrict({ authority: admin.publicKey, config })
+        .instruction(),
+    );
 }
 function publicConfig(): AppConfig {
   return {
@@ -314,7 +388,11 @@ async function binding(input: unknown): Promise<MarketBinding> {
   log("source-selection", { ...item, closeTs });
   return result;
 }
-async function prepare(body: { parent: unknown; target: unknown }) {
+async function prepare(body: {
+  parent: unknown;
+  target: unknown;
+  communityFunding?: boolean;
+}) {
   const a = await binding(body.parent),
     b = await binding(body.target);
   if (a.instrument === b.instrument)
@@ -359,8 +437,12 @@ async function prepare(body: { parent: unknown; target: unknown }) {
   if (!(await program.account.market.fetchNullable(market))) {
     await transact(
       "create conditional market",
-      await program.methods
-        .createMarket(units(100), new BN(0))
+      await (
+        SOL
+          ? // depth sized from a 0.1 SOL budget (see docs/liquidity.md)
+            program.methods.createMarketForBudget(units(0.1), new BN(0))
+          : program.methods.createMarket(units(100), new BN(0))
+      )
         .accountsStrict({
           admin: admin.publicKey,
           config,
@@ -375,6 +457,100 @@ async function prepare(body: { parent: unknown; target: unknown }) {
         .instruction(),
     );
   }
+  if (SOL)
+    await fundSolLiquidity(
+      market,
+      parent,
+      target,
+      vault,
+      body.communityFunding,
+    );
+  else await fundMockLiquidity(market, parent, target, vault);
+  const result: MarketDescriptor = {
+    address: market.toBase58(),
+    parent: parent.toBase58(),
+    target: target.toBase58(),
+    vault: vault.toBase58(),
+    bindings: [a, b],
+  };
+  markets.push(result);
+  save();
+  return result;
+}
+/** SOL: the operator funds the exact required subsidy, unless wallets fund it (community). */
+async function fundSolLiquidity(
+  market: PublicKey,
+  parent: PublicKey,
+  target: PublicKey,
+  vault: PublicKey,
+  communityFunding?: boolean,
+) {
+  if (communityFunding) return;
+  const lp = pda("lp", market, admin.publicKey);
+  if (!(await program.account.lp.fetchNullable(lp)))
+    await transact(
+      "open LP",
+      await program.methods
+        .openLp()
+        .accountsStrict({
+          owner: admin.publicKey,
+          market,
+          lp,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction(),
+    );
+  const state = await program.account.market.fetch(market);
+  if (state.started) return;
+  const needed = new BN(
+    requiredSubsidy({
+      b: BigInt(state.b.toString()),
+      offsetYes: BigInt(state.offsetYes.toString()),
+      offsetNo: BigInt(state.offsetNo.toString()),
+    }).toString(),
+  ).sub(state.lpDeposits);
+  if (needed.gt(new BN(0))) {
+    const native = await nativeSolAccount(
+      connection,
+      admin.publicKey,
+      BigInt(needed.toString()),
+    );
+    const signature = await send([
+      ...native.open,
+      await program.methods
+        .fundLp(needed)
+        .accountsStrict({
+          owner: admin.publicKey,
+          config,
+          market,
+          parent,
+          target,
+          lp,
+          mint,
+          vault,
+          userToken: native.address,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .instruction(),
+      native.close,
+    ]);
+    log("transaction", { label: "fund SOL liquidity", signature });
+  }
+  await transact(
+    "start market",
+    await program.methods
+      .startMarket()
+      .accountsStrict({ config, market, parent, target })
+      .instruction(),
+  );
+}
+/** Mock collateral: mint and fund the fixed 80-unit subsidy, then start trading. */
+async function fundMockLiquidity(
+  market: PublicKey,
+  parent: PublicKey,
+  target: PublicKey,
+  vault: PublicKey,
+) {
   const lp = pda("lp", market, admin.publicKey);
   const userToken = (
     await getOrCreateAssociatedTokenAccount(
@@ -436,16 +612,6 @@ async function prepare(body: { parent: unknown; target: unknown }) {
         .instruction(),
     );
   }
-  const result: MarketDescriptor = {
-    address: market.toBase58(),
-    parent: parent.toBase58(),
-    target: target.toBase58(),
-    vault: vault.toBase58(),
-    bindings: [a, b],
-  };
-  markets.push(result);
-  save();
-  return result;
 }
 async function refresh(m: MarketDescriptor) {
   for (const b of m.bindings) {
@@ -503,11 +669,43 @@ async function refresh(m: MarketDescriptor) {
     target: new PublicKey(m.target),
   };
   // Materialize status even when sources remain unresolved. Never infer a final outcome.
-  await transact(
-    "sync lifecycle",
-    await program.methods.syncMarket().accountsStrict(accounts).instruction(),
-    true,
-  );
+  // Only send a sync transaction when the on-chain status would change: this mirrors
+  // Market::derive_status in state.rs exactly, and saves a fee-paying tx per market per poll.
+  const before = await program.account.market.fetch(accounts.market);
+  const [parentState, targetState] = await Promise.all([
+    program.account.externalEvent.fetch(accounts.parent),
+    program.account.externalEvent.fetch(accounts.target),
+  ]);
+  const outcome = (x: typeof parentState) => Object.keys(x.outcome)[0];
+  const a = outcome(parentState),
+    b = outcome(targetState);
+  const desired =
+    a === "no" || a === "invalid" || b === "invalid"
+      ? "void"
+      : a === "yes" && b === "yes"
+        ? "settledYes"
+        : a === "yes" && b === "no"
+          ? "settledNo"
+          : parentState.halted || targetState.halted
+            ? "halted"
+            : b !== "unresolved"
+              ? "frozen"
+              : !before.started
+                ? "funding"
+                : a === "yes"
+                  ? "active"
+                  : "pending";
+  if (
+    !["void", "settledYes", "settledNo"].includes(
+      Object.keys(before.status)[0]!,
+    ) &&
+    !(desired in before.status)
+  )
+    await transact(
+      "sync lifecycle",
+      await program.methods.syncMarket().accountsStrict(accounts).instruction(),
+      true,
+    );
   return { checkedAt: new Date().toISOString() };
 }
 async function faucet(ownerText: string) {
@@ -565,13 +763,14 @@ async function faucet(ownerText: string) {
 // auto-trader's position in that market when armed, and fires at most once.
 const rulesPath = join(directory, "autobuy.json");
 const executorPath =
-  process.env.FORK_AUTOBUYER_KEYPAIR ?? join(directory, "autobuyer.keypair.json");
+  process.env.FORK_AUTOBUYER_KEYPAIR ??
+  join(directory, "autobuyer.keypair.json");
 const executor = existsSync(executorPath)
   ? Keypair.fromSecretKey(
       Uint8Array.from(JSON.parse(readFileSync(executorPath, "utf8"))),
     )
   : Keypair.generate();
-if (!existsSync(executorPath))
+if (!existsSync(executorPath) && !SOL)
   writeFileSync(executorPath, JSON.stringify([...executor.secretKey]), {
     mode: 0o600,
   });
@@ -681,14 +880,25 @@ async function quickRule(body: Record<string, unknown>) {
   const cond = body.condition as { ticker?: string; outcome?: string };
   const tgt = body.target as { ticker?: string; outcome?: string };
   const tickerOk = (t?: string) => !!t && /^[A-Za-z0-9._-]{1,64}$/.test(t);
-  if (!tickerOk(cond?.ticker) || !tickerOk(tgt?.ticker) || !cond.outcome || !tgt.outcome)
+  if (
+    !tickerOk(cond?.ticker) ||
+    !tickerOk(tgt?.ticker) ||
+    !cond.outcome ||
+    !tgt.outcome
+  )
     throw new Error("Both A and B must be live Gemini outcomes.");
-  const a = resolveOutcome(await fetchEvent(cond.ticker!, sourceFetch), cond.outcome);
+  const a = resolveOutcome(
+    await fetchEvent(cond.ticker!, sourceFetch),
+    cond.outcome,
+  );
   if (!a.yes)
     throw new Error(
       "A must be a YES outcome: these markets only support “B given A = YES”.",
     );
-  const b = resolveOutcome(await fetchEvent(tgt.ticker!, sourceFetch), tgt.outcome);
+  const b = resolveOutcome(
+    await fetchEvent(tgt.ticker!, sourceFetch),
+    tgt.outcome,
+  );
   if (a.instrument === b.instrument)
     throw new Error("A and B are the same contract.");
   const ia = await inspect(cond.ticker!, a.instrument);
@@ -701,8 +911,20 @@ async function quickRule(body: Record<string, unknown>) {
   const closeFor = (i: Instrument) =>
     new Date((i.closeTs ?? earliest) * 1000).toISOString();
   const market = await prepare({
-    parent: { ticker: cond.ticker, instrument: a.instrument, termsHash: ia.termsHash, close: closeFor(ia), reviewed: true },
-    target: { ticker: tgt.ticker, instrument: b.instrument, termsHash: ib.termsHash, close: closeFor(ib), reviewed: true },
+    parent: {
+      ticker: cond.ticker,
+      instrument: a.instrument,
+      termsHash: ia.termsHash,
+      close: closeFor(ia),
+      reviewed: true,
+    },
+    target: {
+      ticker: tgt.ticker,
+      instrument: b.instrument,
+      termsHash: ib.termsHash,
+      close: closeFor(ib),
+      reviewed: true,
+    },
   });
   const against = body.against === true;
   return createRule({
@@ -725,7 +947,8 @@ async function quickRule(body: Record<string, unknown>) {
 function cancelRule(id: unknown) {
   const rule = rules.find((r) => r.id === id);
   if (!rule) throw new Error("Unknown rule.");
-  if (rule.status !== "armed") throw new Error(`Rule is already ${rule.status}.`);
+  if (rule.status !== "armed")
+    throw new Error(`Rule is already ${rule.status}.`);
   rule.status = "cancelled";
   saveRules();
   log("auto-buy-cancelled", { id });
@@ -772,7 +995,10 @@ async function fire(rule: AutoBuyRule, o: Observation) {
     log("auto-buy-fired", { id: rule.id, observation: o, signature });
   } catch (error) {
     rule.status = "failed";
-    rule.error = redact(String((error as Error).message ?? error)).slice(0, 400);
+    rule.error = redact(String((error as Error).message ?? error)).slice(
+      0,
+      400,
+    );
     log("auto-buy-failed", { id: rule.id, observation: o, error: rule.error });
   }
   saveRules();
@@ -862,11 +1088,21 @@ createServer(async (req, res) => {
       );
     else if (req.method === "POST" && url.pathname === "/markets")
       data = await serial(() =>
-        prepare(body as { parent: unknown; target: unknown }),
+        prepare(
+          body as {
+            parent: unknown;
+            target: unknown;
+            communityFunding?: boolean;
+          },
+        ),
       );
     else if (req.method === "POST" && url.pathname === "/refresh")
       data = await serial(() => refresh(descriptor(body.market)));
-    else if (req.method === "GET" && url.pathname === "/rules")
+    // Auto-buy rules and the mock faucet exist only on the mock-collateral instance.
+    else if (SOL && ["/rules", "/faucet"].includes(url.pathname)) {
+      res.statusCode = 404;
+      throw new Error("Not available on the SOL collateral service.");
+    } else if (req.method === "GET" && url.pathname === "/rules")
       data = { executor: executor.publicKey.toBase58(), rules };
     else if (req.method === "POST" && url.pathname === "/rules")
       data = await serial(() =>
@@ -882,14 +1118,20 @@ createServer(async (req, res) => {
       res.statusCode = 404;
       throw new Error("Unknown local endpoint.");
     }
-    res.end(JSON.stringify({ ok: true, data }));
+    res.end(
+      JSON.stringify({ ok: true, data }, (_, value) =>
+        typeof value === "bigint" ? value.toString() : value,
+      ),
+    );
   } catch (error) {
     res.statusCode = res.statusCode === 404 ? 404 : 400;
-    res.end(JSON.stringify({ ok: false, error: redact((error as Error).message) }));
+    res.end(
+      JSON.stringify({ ok: false, error: redact((error as Error).message) }),
+    );
   }
 }).listen(Number(process.env.FORK_SERVICE_PORT ?? "8787"), "127.0.0.1", () =>
   console.log(
-    `Fork ${CLUSTER} service: http://127.0.0.1:${process.env.FORK_SERVICE_PORT ?? "8787"} (mock funds, live Gemini, real oracle polling)`,
+    `Fork ${CLUSTER} service: http://127.0.0.1:${process.env.FORK_SERVICE_PORT ?? "8787"} (${SOL ? "native SOL" : "mock"} collateral, live Gemini, real oracle polling)`,
   ),
 );
 let polling = false;
@@ -910,9 +1152,12 @@ setInterval(() => {
 }, 30_000).unref();
 
 // Auto-buy watcher: every 15s, through the same serialized queue and 1 req/s Gemini gate.
-setInterval(() => {
-  if (!rules.some((r) => r.status === "armed")) return;
-  void serial(checkRules).catch((e) =>
-    log("auto-buy-loop-error", { error: String(e) }),
-  );
-}, Number(process.env.FORK_AUTOBUY_INTERVAL_MS ?? 15_000)).unref();
+setInterval(
+  () => {
+    if (!rules.some((r) => r.status === "armed")) return;
+    void serial(checkRules).catch((e) =>
+      log("auto-buy-loop-error", { error: String(e) }),
+    );
+  },
+  Number(process.env.FORK_AUTOBUY_INTERVAL_MS ?? 15_000),
+).unref();

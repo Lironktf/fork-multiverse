@@ -24,6 +24,7 @@ interface UIState {
   hoveredNode: string | null;
   selectedNode: string | null;
   panel: Panel;
+  workspaceTab: "forecast" | "trade";
   palette: boolean;
   discoveryOpen: boolean;
   inspectRole: string | null;
@@ -52,6 +53,7 @@ export const useUI = create<UIState>()((set) => ({
   hoveredNode: null,
   selectedNode: null,
   panel: null,
+  workspaceTab: "forecast",
   palette: false,
   discoveryOpen: true,
   inspectRole: null,

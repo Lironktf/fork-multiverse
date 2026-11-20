@@ -15,8 +15,8 @@ import { ORIGIN_ID } from "@/lib/domain/verse";
  *  - Verse attestation: a REAL devnet transaction (SPL Memo) signed by the
  *    user's wallet, anchoring the Verse fingerprint. Status shown only after
  *    confirmation; signature links to Solana Explorer.
- *  The manual Positions trading card is intentionally not mounted; trading is
- *  offered through IfThenBuy (one-step "if A happens, buy B").
+ *  Trading: "If this happens, buy" (IfThenBuy, mock USDC) below the forecast, and the
+ *  graph-linked Trade tab (Positions, native devnet SOL).
  */
 const NONE: never[] = [];
 

@@ -72,6 +72,7 @@ export const ForkEvent = z.object({
       series: z.string().optional(),
       /** For categorical gemini events: outcome -> contract id */
       contractIds: z.record(z.string(), z.string()).optional(),
+      instrumentSymbols: z.record(z.string(), z.string()).optional(),
       /** Illustrative baseline P(target outcome) for demo events */
       demoBaseline: z.number().optional(),
       /** Ids of events whose YES is mutually exclusive with this event's YES */

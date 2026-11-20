@@ -1,0 +1,31 @@
+export const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+export const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+export const TESTNET_GENESIS = "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY";
+
+export function validateNetwork(cluster: string, rpc: string, genesis: string) {
+  const url = new URL(rpc);
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (cluster === "devnet") {
+    // Helius' devnet endpoint is accepted server-side (its key never reaches the browser,
+    // which is always given the official endpoint).
+    if (
+      url.protocol !== "https:" ||
+      !["api.devnet.solana.com", "devnet.helius-rpc.com"].includes(
+        url.hostname,
+      ) ||
+      genesis !== DEVNET_GENESIS
+    )
+      throw new Error(
+        "Devnet requires the official (or Helius) HTTPS devnet RPC and devnet genesis hash.",
+      );
+  } else if (cluster === "localnet") {
+    if (
+      !loopback ||
+      !["http:", "https:"].includes(url.protocol) ||
+      [DEVNET_GENESIS, MAINNET_GENESIS, TESTNET_GENESIS].includes(genesis)
+    )
+      throw new Error(
+        "Localnet requires a local validator, not a proxy to a public cluster.",
+      );
+  } else throw new Error("Only localnet and devnet are supported.");
+}

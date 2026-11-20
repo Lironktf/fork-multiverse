@@ -14,4 +14,6 @@ fi
 # Synchronize the public ID when a clean checkout generated a new local program key.
 NO_DNA=1 anchor keys sync
 NO_DNA=1 anchor build
-solana program deploy --url "$rpc" --keypair "$SIGNER_PATH" --program-id target/deploy/fork_contracts-keypair.json target/deploy/fork_contracts.so
+NO_DNA=1 solana program deploy --url "$rpc" --keypair "$SIGNER_PATH" --program-id target/deploy/fork_contracts-keypair.json target/deploy/fork_contracts.so
+
+npm run app:sync

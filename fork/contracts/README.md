@@ -1,21 +1,25 @@
 # Solana conditional prediction markets
 
-The original Fork application now connects to this program through a local service.
-See [the integrated application workflow](../docs/integration.md) and
-[verification report](../docs/verification.md). Existing CLI demos below are retained.
+The app and devnet demo use **native SOL collateral** with nine-decimal lamport
+accounting. Follow [the SOL demo walkthrough](../docs/devnet.md). The Rust program
+is in [`programs/fork-contracts/src`](programs/fork-contracts/src), with backing
+and authorization tests in [`tests/market.rs`](programs/fork-contracts/tests/market.rs).
 
-An Anchor 1.1.2 demo for **B conditional on A=YES**, with an integer binary LMSR,
-legacy SPL Token collateral, immutable Gemini instrument bindings, a trusted
-oracle adapter, real LiteSVM tests and an optional paper-trading research bot.
-Everything here belongs to the contracts workspace; the separate application
-is untouched. No mainnet or real-money deployment has been performed.
+An Anchor 1.1.2 program for **B conditional on A=YES**, with an integer binary
+LMSR, immutable Gemini instrument bindings and a trusted oracle adapter. Native
+SOL accounts hold actual lamports; the app never mints collateral. Legacy
+six-decimal configurations remain separate for existing claims and historical
+CLI test fixtures. No mainnet deployment has been performed.
 
 If A=YES, winning B shares pay one collateral unit. If A=NO or either event is
 INVALID, the market voids and every trader receives their entire deposited
 collateral, even after profitable exits, losing exits, partial closes or
 reversals. Rounding reserves are refunded too. Network fees are separate.
 
-## Live Gemini demo — user-selected contracts
+## Historical CLI fixture — custom test collateral
+
+The CLI workflow below is retained for legacy contract testing. For the current
+SOL app, use [the SOL walkthrough](../docs/devnet.md).
 
 In terminal 1, from `fork/contracts`:
 
@@ -137,8 +141,8 @@ interests are **nontransferable program accounts**, not bearer tokens.
 Configurations are namespaced by their creator; clients must pin their chosen
 config. The program's loader upgrade authority is separate from config admin.
 Admin transfer requires proposal and acceptance. Reporter and pause authority
-are explicit roles; oracle quorum is **one trusted reporter**. Fees are fixed
-at zero; no admin instruction can change market conditions or drain escrow.
+are explicit roles; oracle quorum is **one trusted reporter**. New markets snapshot a configurable LP fee (0–10%); no admin instruction can
+change an existing market’s fee or drain escrow. See [LP economics and migration](docs/liquidity.md).
 
 For trader i:
 
@@ -185,7 +189,7 @@ trade  = F(after) - F(before)
 Initial log odds configure probability; zero gives 50%. Stable range reduction
 and bounded integer series use a 10^18 scale and checked u128 intermediates.
 Final amounts are micro-USDC. Buys add four micro-USDC and sells subtract up
-to four as a conservative rounding reserve; percentage fees remain zero.
+to four as a conservative rounding reserve; the snapshotted LP fee is then applied to the collateral flow.
 Quotes return the same integer amounts that trades use. Maximum input ranges,
 error bounds and compute measurements are documented in the linked reports.
 
@@ -193,7 +197,8 @@ One virtual offset is zero. Required initial subsidy is floor(F(0,0))+4,
 which is b\*ln(2) plus rounding only for a balanced initialization. Off-center
 initialization requires a larger worst-case reserve. An LP can lose almost all
 of this subsidy when traders win; all trader entitlements remain covered.
-LPs receive residual equity proportionally to their deposited capital.
+LPs receive residual equity, including conditional fees on valid settlement,
+proportionally to their deposited capital. Fees cancel on VOID and do not guarantee profit.
 
 Multiple LPs may fund or withdraw during Funding. Once started, **LP ownership,
 b and reserves are locked until terminal settlement**. Live LP additions and
@@ -268,6 +273,10 @@ misresolve markets; reporter failure can lock funds indefinitely.
 
 ## Local validator and devnet
 
+The expanded deployment/RPC suite is `npm run test:validator`: five markets,
+multiple LPs and traders, actual SPL transfers, fees, exits, valid settlements and
+VOID refunds. See [the reproducible workflow and migration](docs/liquidity.md).
+
 LiteSVM requires no validator. For a separate validator smoke demo, terminal 1:
 
 ```bash
@@ -302,7 +311,7 @@ SIGNER_PATH=/absolute/path/to/test-signer.json npm run demo:fixture
 On a fresh checkout the generated program keypair has a new public ID. The
 deploy script runs `anchor keys sync` and rebuilds; review its source/config
 changes. Clients and the local loader read the resulting IDL address. Program
-keypairs stay ignored under target. Devnet deployment was not executed here.
+keypairs stay ignored under target. The current devnet deployment and browser verification are recorded in [devnet-deployment.json](docs/devnet-deployment.json); see the [app walkthrough](../docs/devnet.md).
 The demo is one run per configured signer; use a fresh test signer/config for
 another run. Mainnet is rejected by the supplied client/scripts.
 

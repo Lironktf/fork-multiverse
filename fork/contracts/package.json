@@ -24,7 +24,10 @@
     "demo:audit": "tsx demo/audit.ts",
     "app:serve": "tsx app/service.ts",
     "app:sync": "tsx scripts/sync-app.ts",
-    "app:validator": "bash scripts/app-validator.sh"
+    "app:validator": "bash scripts/app-validator.sh",
+    "smoke:liquidity": "tsx scripts/liquidity-smoke.ts",
+    "test:validator": "bash scripts/test-validator.sh",
+    "migrate:markets": "tsx scripts/migrate-markets.ts"
   },
   "dependencies": {
     "@anchor-lang/core": "1.1.2",

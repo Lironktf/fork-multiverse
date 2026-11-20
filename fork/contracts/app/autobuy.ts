@@ -75,42 +75,58 @@ export function parseRuleInput(input: unknown): {
   const v = (input ?? {}) as Record<string, unknown>;
   const t = (v.trigger ?? {}) as Record<string, unknown>;
   const a = (v.action ?? {}) as Record<string, unknown>;
-  if (typeof v.market !== "string" || !v.market) throw new Error("Choose a market.");
+  if (typeof v.market !== "string" || !v.market)
+    throw new Error("Choose a market.");
   const op = t.op;
-  if (op !== ">=" && op !== "<=") throw new Error("Comparator must be >= or <=.");
+  if (op !== ">=" && op !== "<=")
+    throw new Error("Comparator must be >= or <=.");
   const value = Number(t.value);
-  if (!Number.isFinite(value) || value <= 0) throw new Error("Threshold must be a positive number.");
+  if (!Number.isFinite(value) || value <= 0)
+    throw new Error("Threshold must be a positive number.");
   let trigger: Trigger;
   if (t.kind === "spot") {
     const symbol = String(t.symbol ?? "").toLowerCase();
     if (!SYMBOL.test(symbol)) throw new Error("Invalid spot symbol.");
     trigger = { kind: "spot", symbol, op, value };
   } else if (t.kind === "contract") {
-    if (value >= 1) throw new Error("A contract threshold is a probability between 0 and 1.");
+    if (value >= 1)
+      throw new Error("A contract threshold is a probability between 0 and 1.");
     const ticker = String(t.ticker ?? "");
     const instrument = String(t.instrument ?? "");
-    if (!TICKER.test(ticker) || !INSTRUMENT.test(instrument)) throw new Error("Invalid Gemini contract.");
+    if (!TICKER.test(ticker) || !INSTRUMENT.test(instrument))
+      throw new Error("Invalid Gemini contract.");
     trigger = { kind: "contract", ticker, instrument, op, value };
   } else throw new Error("Trigger must be spot or contract.");
   const side = a.side;
-  if (side !== "yes" && side !== "no") throw new Error("Side must be yes or no.");
+  if (side !== "yes" && side !== "no")
+    throw new Error("Side must be yes or no.");
   const shares = Number(a.shares);
   const maxCost = Number(a.maxCost);
   if (!Number.isInteger(shares) || shares < 1 || shares > MAX_SHARES)
     throw new Error(`Shares must be a whole number from 1 to ${MAX_SHARES}.`);
   if (!Number.isFinite(maxCost) || maxCost <= 0 || maxCost > MAX_COST)
     throw new Error(`Max cost must be above 0 and at most ${MAX_COST}.`);
-  if (maxCost > shares) throw new Error("Max cost above the share count can never be worth paying (each share pays at most 1).");
+  if (maxCost > shares)
+    throw new Error(
+      "Max cost above the share count can never be worth paying (each share pays at most 1).",
+    );
   const l = v.labels as Record<string, unknown> | undefined;
   const labels =
     l && typeof l.condition === "string" && typeof l.target === "string"
       ? {
           condition: l.condition.slice(0, 160),
           target: l.target.slice(0, 160),
-          ...(typeof l.world === "string" ? { world: l.world.slice(0, 80) } : {}),
+          ...(typeof l.world === "string"
+            ? { world: l.world.slice(0, 80) }
+            : {}),
         }
       : undefined;
-  return { market: v.market, trigger, action: { side, shares, maxCost }, ...(labels ? { labels } : {}) };
+  return {
+    market: v.market,
+    trigger,
+    action: { side, shares, maxCost },
+    ...(labels ? { labels } : {}),
+  };
 }
 
 const num = (x: unknown) => {
@@ -120,14 +136,24 @@ const num = (x: unknown) => {
 };
 
 /** Spot observation from /v1/pubticker. */
-export function spotObservation(ticker: unknown, at = new Date()): Observation | null {
+export function spotObservation(
+  ticker: unknown,
+  at = new Date(),
+): Observation | null {
   const last = num((ticker as Record<string, unknown> | null)?.last);
-  return last == null || last <= 0 ? null : { value: last, source: "gemini pubticker last", at: at.toISOString() };
+  return last == null || last <= 0
+    ? null
+    : { value: last, source: "gemini pubticker last", at: at.toISOString() };
 }
 
 /** Contract observation from an event payload: mid of bid/ask, else last trade, else nothing. */
-export function contractObservation(event: unknown, instrument: string, at = new Date()): Observation | null {
-  const contracts = ((event as { contracts?: unknown[] } | null)?.contracts ?? []) as {
+export function contractObservation(
+  event: unknown,
+  instrument: string,
+  at = new Date(),
+): Observation | null {
+  const contracts = ((event as { contracts?: unknown[] } | null)?.contracts ??
+    []) as {
     instrumentSymbol?: string;
     prices?: Record<string, unknown>;
   }[];
@@ -136,14 +162,22 @@ export function contractObservation(event: unknown, instrument: string, at = new
   const bid = num(c.prices.bestBid);
   const ask = num(c.prices.bestAsk);
   if (bid != null && ask != null && ask >= bid)
-    return { value: (bid + ask) / 2, source: `gemini bid/ask mid (${bid}/${ask})`, at: at.toISOString() };
+    return {
+      value: (bid + ask) / 2,
+      source: `gemini bid/ask mid (${bid}/${ask})`,
+      at: at.toISOString(),
+    };
   const last = num(c.prices.lastTradePrice);
-  return last == null ? null : { value: last, source: "gemini last trade", at: at.toISOString() };
+  return last == null
+    ? null
+    : { value: last, source: "gemini last trade", at: at.toISOString() };
 }
 
 export function crosses(trigger: Trigger, o: Observation | null): boolean {
   if (!o) return false;
-  return trigger.op === ">=" ? o.value >= trigger.value : o.value <= trigger.value;
+  return trigger.op === ">="
+    ? o.value >= trigger.value
+    : o.value <= trigger.value;
 }
 
 export function describeTrigger(t: Trigger): string {
@@ -165,20 +199,32 @@ export function resolveOutcome(
 ): { instrument: string; yes: boolean } {
   const e = (raw ?? {}) as {
     type?: string;
-    contracts?: { instrumentSymbol?: string; label?: string; status?: string }[];
+    contracts?: {
+      instrumentSymbol?: string;
+      label?: string;
+      status?: string;
+    }[];
   };
   const live = (e.contracts ?? []).filter(
-    (c) => c.status !== "settled" && c.status !== "invalid" && c.instrumentSymbol,
+    (c) =>
+      c.status !== "settled" && c.status !== "invalid" && c.instrumentSymbol,
   );
   if (!live.length) throw new Error("This Gemini event has no open contract.");
   // binary events use YES/NO; single-contract categorical events use the contract label
   // (gemini-normalize.ts keeps actual outcome labels for every non-binary event)
-  if (e.type === "binary" || (live.length === 1 && (outcome === "YES" || outcome === "NO"))) {
-    if (outcome !== "YES" && outcome !== "NO") throw new Error(`Unknown outcome ${outcome}.`);
+  if (
+    e.type === "binary" ||
+    (live.length === 1 && (outcome === "YES" || outcome === "NO"))
+  ) {
+    if (outcome !== "YES" && outcome !== "NO")
+      throw new Error(`Unknown outcome ${outcome}.`);
     return { instrument: live[0]!.instrumentSymbol!, yes: outcome === "YES" };
   }
   const c = live.find((x) => x.label === outcome);
-  if (!c) throw new Error(`Outcome “${outcome}” is not an open contract on this event.`);
+  if (!c)
+    throw new Error(
+      `Outcome “${outcome}” is not an open contract on this event.`,
+    );
   return { instrument: c.instrumentSymbol!, yes: true };
 }
 

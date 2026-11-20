@@ -17,13 +17,13 @@ repository. The previously empty nested Git metadata was preserved locally under
 
 The Node packages retain separate lockfiles to preserve their tested Anchor/web3
 compatibility boundaries. Build artifacts, local signers and validator ledgers
-remain ignored. The original Fork appearance is unchanged.
+remain ignored. The Trade tab connects exact conditional markets to the selected graph world.
 
 ## Compatibility map
 
 | Existing surface                                   | Integration                                                                                                    |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Next.js 15 / React 19 / Tailwind / Zustand         | Retained; no visual redesign or replacement application                                                        |
+| Next.js 15 / React 19 / Tailwind / Zustand         | Retained; graph-linked Trade tab alongside Forecast                                                            |
 | Wallet Standard via existing wallet-adapter        | Retained; Anchor 1.1.2 requires web3.js 1.x; pin compatible versions                                           |
 | Gemini event-level discovery                       | Retained; normalize Bitcoin/BTC and Solana/SOL searches; trading additionally selects exact instrument symbols |
 | Forecast/model probabilities                       | Research only; never converted to conditional execution prices or final outcomes                               |
@@ -50,7 +50,7 @@ close. Missing source data blocks new execution; no guessed final result.
 
 Prerequisites: Node 22+, npm, Rust 1.89.0, Anchor CLI 1.1.2 and Solana CLI /
 `cargo-build-sbf` 3.1.10 (the contracts project's existing pinned toolchain).
-No Gemini API key is required. Use only local mock collateral.
+No Gemini API key is required. Use only local SOL collateral.
 
 From the repository root:
 
@@ -67,7 +67,7 @@ In terminal 1, start a persistent local validator with the compiled program:
 npm --prefix fork/contracts run app:validator
 ```
 
-In terminal 2, start local configuration, mock collateral and oracle polling:
+In terminal 2, start local configuration, SOL collateral and oracle polling:
 
 ```bash
 npm --prefix fork/contracts run app:serve
@@ -82,25 +82,25 @@ NEXT_PUBLIC_SOLANA_RPC=http://127.0.0.1:8899 \
 npm --prefix fork run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
-Open `http://127.0.0.1:3000`. Choose a target in Fork, then open **FORK Positions**
-at the bottom of the existing Forecast panel. Search exact parent A and target B
-instruments, read their rules and resolution criteria, enter a conservative UTC
-trading close for each and acknowledge the rules. **Create or connect market**
-registers immutable bindings and starts a local LMSR with b=100, initial log odds
-zero and 80 mock USDC LP subsidy. No Gemini orders are ever submitted.
+Open `http://127.0.0.1:3000`. Select a live Gemini target and fork a world with a
+live YES assumption or specific categorical outcome. Open **Trade → Build this
+market**, review both source rules and trading closes, then **Create market**.
+Alternatively, choose **Available markets → Open in graph & trade** to select
+an existing market and its matching graph world. New markets start at 50% with
+depth sized for 0.1 SOL of sponsored liquidity and the configured LP fee.
+Wallet LP controls remain under **Liquidity & contract details** for markets in
+Funding. See [accounting and migration](../contracts/docs/liquidity.md).
 
 Connect a Wallet Standard Solana wallet through the existing top-right button.
-The wallet must support local transactions with the configured RPC. Use **Get
-mock collateral + SOL**, then deposit. Request an on-chain quote, review its cost
+The wallet must support local transactions with the configured RPC. Use the devnet SOL faucet (or a local validator airdrop), then deposit. Click **Review trade**, review its cost
 and slippage limit, and confirm a YES/NO buy or sell in the wallet. Sells credit
 conditional cash. **Redeem eligible balance** is enabled only when a confirmed
-terminal state has a positive entitlement. The mock faucet tops the wallet up to
-1,000 mock USDC; it is disabled outside localhost. Wallet extension compatibility
+terminal state has a positive entitlement. Wallet extension compatibility
 varies; the automated demonstration uses an isolated Wallet Standard bridge.
 
-The Positions card is independent of model forecasts and multi-assumption
-Verses. Its A and B instrument symbols are always displayed. Choosing a Verse or
-forecast target never silently changes an existing position's economic meaning.
+The Trade panel follows the selected graph target and condition. A multi-assumption
+Verse requires selecting one condition explicitly. Existing positions retain their
+original instrument bindings; opening one restores its matching graph world.
 
 Production build (same local development backend):
 
@@ -121,22 +121,22 @@ running Fork without this local trading integration.
 
 ## Configuration and architecture
 
-| Setting                      | Default                     | Owner / purpose                                                          |
-| ---------------------------- | --------------------------- | ------------------------------------------------------------------------ |
-| `RPC_URL`                    | `http://127.0.0.1:8899`     | Contracts service RPC, local only                                        |
-| `FORK_LOCAL_DIR`             | `fork/contracts/.local/app` | Service session, dev signer, source audit log; relative to contracts cwd |
-| `FORK_SERVICE_PORT`          | `8787`                      | Service binds only to 127.0.0.1                                          |
-| `FORK_LOCAL_SERVICE`         | unset                       | Next server-only proxy address; unset disables trading backend           |
-| `NEXT_PUBLIC_SOLANA_CLUSTER` | `devnet`                    | Set `localnet` for this integration                                      |
-| `NEXT_PUBLIC_SOLANA_RPC`     | network default             | Browser's public RPC; must match service genesis                         |
-| `FORK_VALIDATOR_LEDGER`      | `.local/app-validator`      | Dedicated persistent app ledger                                          |
-| `FORK_RPC_PORT`              | `8899`                      | Validator RPC (WebSocket uses next port)                                 |
-| `FORK_FAUCET_PORT`           | `9900`                      | Validator faucet                                                         |
-| `FORK_GOSSIP_PORT`           | `8001`                      | Validator gossip                                                         |
-| `FORK_DYNAMIC_PORT_RANGE`    | `8002-8030`                 | Validator local dynamic ports                                            |
+| Setting                      | Default                         | Owner / purpose                                                 |
+| ---------------------------- | ------------------------------- | --------------------------------------------------------------- |
+| `RPC_URL`                    | `http://127.0.0.1:8899`         | Contracts service RPC, local only                               |
+| `FORK_LOCAL_DIR`             | `fork/contracts/.local/sol-app` | Service session and source audit log; relative to contracts cwd |
+| `FORK_SERVICE_PORT`          | `8787`                          | Service binds only to 127.0.0.1                                 |
+| `FORK_LOCAL_SERVICE`         | unset                           | Next server-only proxy address; unset disables trading backend  |
+| `NEXT_PUBLIC_SOLANA_CLUSTER` | `devnet`                        | Set `localnet` for this integration                             |
+| `NEXT_PUBLIC_SOLANA_RPC`     | network default                 | Browser's public RPC; must match service genesis                |
+| `FORK_VALIDATOR_LEDGER`      | `.local/app-validator`          | Dedicated persistent app ledger                                 |
+| `FORK_RPC_PORT`              | `8899`                          | Validator RPC (WebSocket uses next port)                        |
+| `FORK_FAUCET_PORT`           | `9900`                          | Validator faucet                                                |
+| `FORK_GOSSIP_PORT`           | `8001`                          | Validator gossip                                                |
+| `FORK_DYNAMIC_PORT_RANGE`    | `8002-8030`                     | Validator local dynamic ports                                   |
 
 `fork/contracts/app/service.ts` reuses the actual oracle adapter and generated
-Anchor client. It owns registration/admin/reporter/mint signing and the mock LP.
+Anchor client. It owns registration/admin/reporter signing and the SOL-funded LP.
 It polls registered source contracts every 30 seconds, verifies exact symbols,
 terms bytes and expiry, then submits only supported real reports. Readiness checks
 compare the deployed binary to the compiled `.so`. A saved session pins genesis,
@@ -152,26 +152,24 @@ must also be served on loopback. No service code is imported into the frontend.
 Anchor. Transactions use the existing legacy wallet format, confirmed commitment,
 preflight simulation and the exact submitted blockhash lifetime. Quotes come
 from the program's u64 return data and QuoteEvent, not a marginal-price formula.
-The execution limit uses integer micro-units. Quotes expire after 30 seconds or
+The execution limit uses integer lamports. Quotes expire after 30 seconds or
 changes to market/trader state. RPC genesis, account owners, discriminators,
 source bindings and collateral-account mint/authority are checked. Every
 confirmed write is followed by an authoritative account read at least as recent
 as its confirmation slot. Polling and reloads also read the chain; localStorage
 holds only selection and transaction references, never balances.
 
-The original screens, graph renderer, global CSS, typefaces, layouts and
-forecast logic remain intact. The only trading UI is the expandable existing
-Positions card and network-aware wallet labels. The source-level
+The graph renderer and forecasting remain intact. The Trade panel follows the
+graph target and condition, with wallet controls and advanced liquidity details. The source-level
 `fork/docs/legacy/fork_positions` draft is retained but not used for execution.
 The optional research bot is unchanged and defaults to paper mode.
 
 ## Persistence and recovery
 
-Keep the validator ledger and `.local/app` together. Restarting both and reopening
+Keep the validator ledger and `.local/sol-app` together. Restarting both and reopening
 Fork restores market selection and confirmed holdings, including when switching
-wallet accounts. A new browser can choose a saved pair from **Existing conditional
-market**. Private local signer files, ledger data, source snapshots, downloaded
-rules, generated browser IDL/types and build output are ignored.
+wallet accounts. A new browser can choose a saved pair from **Available markets → Open in graph & trade**. Private local signer files, ledger data, source snapshots, downloaded
+rules and build output are ignored. Public generated browser IDL/types are committed.
 
 Never run a resetting fixture validator on the app ledger. If a stale deployed
 binary is detected, use a separate new ledger and `FORK_LOCAL_DIR`, or deliberately
@@ -205,18 +203,14 @@ npm --prefix fork run format:check
 BASE_URL=http://127.0.0.1:3000 npm --prefix fork test
 ```
 
-The live integration test is opt-in and requires currently open instruments and
-reviewed conservative trading closes. It uses real Gemini data, the local service,
-an actual validator and wallet signatures. Its test-only Wallet Standard bridge
-keeps private keys in the Node test process. It does not mock RPC success.
+The native SOL integration test is opt-in and requires a running local validator,
+SOL service with an existing market, and a localnet frontend. It checks an actual
+SOL deposit, buy and sell with wallet signatures and vault balances. The test-only
+Wallet Standard bridge keeps private keys in the Node test process.
 
 ```bash
-BASE_URL=http://127.0.0.1:3000 RUN_SOLANA_E2E=1 \
-FORK_TEST_PARENT=EXACT_PARENT_INSTRUMENT \
-FORK_TEST_TARGET=EXACT_TARGET_INSTRUMENT \
-FORK_TEST_PARENT_CLOSE=REVIEWED_ISO_UTC \
-FORK_TEST_TARGET_CLOSE=REVIEWED_ISO_UTC \
-npm --prefix fork run test:solana
+BASE_URL=http://127.0.0.1:3000 FORK_SERVICE_URL=http://127.0.0.1:8787 \
+RUN_NATIVE_SOL=1 npm --prefix fork run test:solana
 ```
 
 See [verification.md](verification.md) for the actual run, transaction evidence,
