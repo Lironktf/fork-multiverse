@@ -9,12 +9,15 @@ const markets = [
     contracts: [{ id: "tech-yes", label: "Technology stock volatility", prices: { lastTradePrice: "0.3" } }] }, Date.now()),
 ];
 
-test("a focused outcome on the last market can fork the existing chain directly into Verse", async ({ page }) => {
+test("multiple expanded markets stay on the graph and transfer explicit assumptions to Verse", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const obsoleteRequests: string[] = [];
   await page.route("**/api/atlas", (route) => {
-    obsoleteRequests.push(route.request().method());
-    return route.fulfill({ status: 404, body: "<html>Not Found</html>" });
+    const { current, visited } = route.request().postDataJSON();
+    const event = current.ticker === "BTC" ? markets[1] : current.ticker === "VOL" ? markets[2] : null;
+    const pairs = visited.includes("gemini:TECH") ? [{
+      from: "gemini:BTC", to: "gemini:TECH", type: "Possible correlation", reason: "Both markets can respond to changes in demand for risk assets.",
+    }] : [];
+    return route.fulfill({ json: { links: event ? [{ event, reason: "Volatility can affect demand for hedges.", type: "Economic" }] : [], pairs, checked: 3, reviewed: 2, partial: false } });
   });
   await page.route("**/api/events?*", (route) => route.fulfill({ json: { ok: true, events: markets } }));
   await page.route("**/api/forecast", (route) => {
@@ -30,23 +33,28 @@ test("a focused outcome on the last market can fork the existing chain directly 
   await page.getByRole("button", { name: "Explore Atlas" }).click();
   const universe = page.getByRole("region", { name: "Gemini market universe" });
   await universe.getByRole("button", { name: "Crypto", exact: true }).click();
-  const map = page.getByRole("region", { name: "Gemini market chain" });
+  const map = page.getByRole("region", { name: "Gemini market graph" });
   await expect(page.getByRole("button", { name: "Fork Reality" })).toBeEnabled();
   await expect(map.getByRole("button", { name: /BTC volatility/ })).toBeVisible();
   await map.getByRole("button", { name: /BTC volatility/ }).click();
   await map.getByRole("button", { name: /Technology stock volatility/ }).click();
   await page.getByLabel("Outcome for Technology stock volatility").selectOption("NO");
-  await expect(page.getByRole("button", { name: "Fork Reality" })).toBeEnabled();
+  await page.getByRole("button", { name: "Add assumption", exact: true }).click();
+  await map.getByRole("button", { name: /Bitcoin reaches/ }).click();
+  await expect(page.getByText("Technology stock volatility · Possible correlation")).toBeVisible();
+  await page.getByRole("button", { name: "Add assumption", exact: true }).click();
+  await map.getByRole("button", { name: /BTC volatility/ }).click();
+  await page.getByRole("button", { name: "Set as target", exact: true }).click();
+  await expect(map.getByRole("button", { name: /Technology stock volatility/ })).toBeVisible();
 
-  const request = page.waitForRequest((req) => req.url().endsWith("/api/forecast") && req.postDataJSON().scenario.length === 1);
+  const request = page.waitForRequest((req) => req.url().endsWith("/api/forecast") && req.postDataJSON().scenario.length === 2);
   await page.getByRole("button", { name: "Fork Reality" }).click();
   expect((await request).postDataJSON()).toMatchObject({
     target: { id: "gemini:VOL" },
     targetOutcome: "YES",
-    scenario: [{ event: { id: "gemini:TECH" }, outcome: "NO" }],
+    scenario: [{ event: { id: "gemini:BTC" }, outcome: "YES" }, { event: { id: "gemini:TECH" }, outcome: "NO" }],
     engine: "auto",
   });
-  expect(obsoleteRequests).toEqual([]);
   await expect(map).toBeHidden();
   await expect(page.getByTestId("verse-name-input")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId("probability-display")).toContainText("42%");
@@ -59,4 +67,28 @@ test("a market route returning HTML provides an actionable error and retry", asy
   const universe = page.getByRole("region", { name: "Gemini market universe" });
   await expect(universe.getByRole("alert")).toContainText("Gemini markets are temporarily unavailable.");
   await expect(universe.getByRole("button", { name: "Retry" })).toBeVisible();
+});
+
+test("changing outcomes redraws suggested branches around the selected market", async ({ page }) => {
+  const result = normalizeEvent({
+    id: "RESULT", ticker: "RESULT", title: "Who wins the contest?", type: "categorical", category: "Politics", status: "active",
+    contracts: [{ id: "berlin", label: "Berlin" }, { id: "paris", label: "Paris" }],
+  }, Date.now());
+  const berlin = normalizeEvent({ id: "BERLIN", ticker: "BERLIN", title: "Berlin hosts the festival?", type: "binary", status: "active" }, Date.now());
+  const paris = normalizeEvent({ id: "PARIS", ticker: "PARIS", title: "Paris hosts the festival?", type: "binary", status: "active" }, Date.now());
+  await page.route("**/api/events?*", (route) => route.fulfill({ json: { ok: true, events: [result, berlin, paris] } }));
+  await page.route("**/api/atlas", (route) => {
+    const { current } = route.request().postDataJSON();
+    const event = current.outcome === "Berlin" ? berlin : paris;
+    return route.fulfill({ json: { links: [{ event, reason: "Possible impact · The winning city could host the festival." }], checked: 3, reviewed: 2, partial: false } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Explore Atlas" }).click();
+  await page.getByRole("button", { name: /Who wins the contest/ }).click();
+  const graph = page.getByRole("region", { name: "Gemini market graph" });
+  await expect(graph.getByRole("button", { name: /Berlin hosts/ })).toBeVisible();
+  await page.getByLabel("Outcome for Who wins the contest?").selectOption("Paris");
+  await expect(graph.getByRole("button", { name: /Paris hosts/ })).toBeVisible();
+  await expect(graph.getByRole("button", { name: /Berlin hosts/ })).toHaveCount(0);
+  await expect(graph.getByRole("button", { name: /Who wins the contest/ })).toBeVisible();
 });

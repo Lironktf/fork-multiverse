@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { chainScenario, marketFreshness, marketLinks } from "../../src/lib/domain/atlas";
+import { chainScenario, classifyRelationship, diverseMarketLinks, marketFreshness, marketLinks } from "../../src/lib/domain/atlas";
 import { normalizeEvent } from "../../src/lib/domain/gemini-normalize";
 import { observedProbability } from "../../src/lib/domain/market";
 
@@ -50,4 +50,31 @@ test("only the selected event outcome becomes a Verse assumption", () => {
   });
   expect(chainScenario(assumption, assumption)).toBeNull();
   expect(chainScenario(assumption, { ...target, outcome: "invalid" })).toBeNull();
+});
+
+test("changing a categorical outcome reranks the suggested branches", () => {
+  const event = { ...market("RESULT", "Who will win?"), eventType: "categorical" as const, possibleOutcomes: ["Alice", "Bob"] };
+  const alice = market("ALICE", "Will Alice win a majority?");
+  const bob = market("BOB", "Will Bob win a majority?");
+  expect(marketLinks(event, [alice, bob], new Set(), "Alice")[0]).toMatchObject({ event: alice, reason: "Matches selected outcome · alice" });
+  expect(marketLinks(event, [alice, bob], new Set(), "Bob")[0]).toMatchObject({ event: bob, reason: "Matches selected outcome · bob" });
+});
+
+test("related markets can resolve on different dates in either order", () => {
+  const later = { ...market("LATER", "Bitcoin above $150,000?"), resolutionDate: "2031-12-31" };
+  const earlier = { ...market("EARLIER", "BTC volatility this month"), resolutionDate: "2030-11-20" };
+  expect(marketLinks(later, [earlier], new Set())[0]).toMatchObject({ event: earlier, type: "Thematic" });
+  expect(classifyRelationship(later, earlier, "Potentially causal")).toBe("Thematic");
+});
+
+test("a U.S. crypto bill surfaces presidential nomination and chamber control markets", () => {
+  const bill = market("BILL", "Will crypto market structure legislation become law?");
+  const democrat = market("DEM", "2028 Democratic Nominee for President?");
+  const senate = market("SENATE", "Which party will control the U.S. Senate after the midterms?");
+  const irrelevant = market("FOREIGN", "When will the French presidential election occur?");
+  const prices = Array.from({ length: 20 }, (_, i) => market(`PRICE${i}`, `Crypto price today at ${i % 12 + 1}:00 EST`));
+  const matches = diverseMarketLinks(marketLinks(bill, [...prices, democrat, senate, irrelevant], new Set(), undefined, 30), 5);
+  expect(matches.find(({ event }) => event.id === democrat.id)?.type).toBe("Political");
+  expect(matches.find(({ event }) => event.id === senate.id)?.type).toBe("Political");
+  expect(matches.some(({ event }) => event.id === irrelevant.id)).toBe(false);
 });
