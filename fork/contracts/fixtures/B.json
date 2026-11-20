@@ -1,0 +1,20 @@
+{
+  "ticker": "B",
+  "status": "settled",
+  "contracts": [
+    {
+      "instrumentSymbol": "GEMI-B",
+      "status": "settled",
+      "expiryDate": "2027-01-15T08:03:30Z",
+      "resolvedAt": "2027-01-15T08:03:30Z",
+      "resolutionSide": "yes",
+      "description": "Demo event B",
+      "termsAndConditionsUrl": "https://assets.gemini.com/demo-B.pdf",
+      "marketState": "closed",
+      "prices": {
+        "buy": {},
+        "sell": {}
+      }
+    }
+  ]
+}

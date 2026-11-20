@@ -1,4 +1,7 @@
-# ubc
+# Fork
 
-- [`fork/`](fork/README.md) — **FORK**, an interactive multiverse engine for conditional forecasting (Next.js app).
-- `prompt.md` — the product specification FORK was built from.
+The Next.js application and Solana backend live together in [`fork/`](fork/README.md).
+
+See the [development workflow](fork/docs/integration.md),
+[verification evidence](fork/docs/verification.md), and
+[review notes](fork/docs/pr-review.md).

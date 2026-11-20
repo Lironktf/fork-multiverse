@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "dist"
+  },
+  "include": [
+    "oracle/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "research/**/*.ts",
+    "client/**/*.ts",
+    "demo/**/*.ts",
+    "app/**/*.ts"
+  ]
+}
