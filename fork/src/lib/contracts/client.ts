@@ -191,6 +191,7 @@ export function marketClient(
       .join(":");
     return {
       slot: response.context.slot,
+      paused: c.paused,
       market: m,
       parent: a,
       target: b,

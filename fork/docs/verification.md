@@ -290,7 +290,6 @@ Existing positions from earlier verification attempts were retained.
 
 ![Consolidated Fork application](screenshots/fork-consolidated.png)
 
-
 ## Re-verification after merging into master — 2026-11-20
 
 Branch `integrate/solana` = PR #1 merged onto master (Grok, ranked search, odds chart),
@@ -299,17 +298,17 @@ a neutral "trading not enabled" state when `FORK_LOCAL_SERVICE` is unset, and an
 opt-in devnet mode. Program ID changed to `13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN` (our keypair).
 Toolchain: Rust 1.89.0, Solana/Agave 3.1.10, Anchor CLI 1.1.2, Node 24.
 
-| Check | Result |
-| --- | --- |
-| `anchor build` | passed (452,200-byte `.so`) |
-| contracts `npm test` | 16/16 |
-| `cargo test --locked` | 17/17 (2 unit + 15 SBF/LiteSVM) |
-| web `tsc`, `eslint`, `next build` | clean, with no contract toolchain needed at build time |
-| web unit tests | 14/14 |
-| core browser journey, no Solana service | 7/7; Positions card shows the neutral note, no errors |
-| synthetic settlement (VOID / YES / NO redeem once) | 3/3 |
-| live trading, real Gemini instruments | passed: A = `GEMI-BTC2611202200-HI62000`, B = `GEMI-SOL2611202200-HI67`, closes 2026-11-20T21:00Z; market `5T7GjFfo3DoqM9g4S2r6VpFMMRfN3zTWZ1vU9tQ3hg5L`; vault 280.000000 mock USDC; no page errors |
-| wallet balance follows confirmed funding | passed |
+| Check                                              | Result                                                                                                                                                                                               |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `anchor build`                                     | passed (452,200-byte `.so`)                                                                                                                                                                          |
+| contracts `npm test`                               | 16/16                                                                                                                                                                                                |
+| `cargo test --locked`                              | 17/17 (2 unit + 15 SBF/LiteSVM)                                                                                                                                                                      |
+| web `tsc`, `eslint`, `next build`                  | clean, with no contract toolchain needed at build time                                                                                                                                               |
+| web unit tests                                     | 14/14                                                                                                                                                                                                |
+| core browser journey, no Solana service            | 7/7; Positions card shows the neutral note, no errors                                                                                                                                                |
+| synthetic settlement (VOID / YES / NO redeem once) | 3/3                                                                                                                                                                                                  |
+| live trading, real Gemini instruments              | passed: A = `GEMI-BTC2611202200-HI62000`, B = `GEMI-SOL2611202200-HI67`, closes 2026-11-20T21:00Z; market `5T7GjFfo3DoqM9g4S2r6VpFMMRfN3zTWZ1vU9tQ3hg5L`; vault 280.000000 mock USDC; no page errors |
+| wallet balance follows confirmed funding           | passed                                                                                                                                                                                               |
 
 Sample local transaction signatures: `3HWkcZs9mU7CCjQ9…`, `444kW8pNadejxACn…`, `2eVbppYndBWGi1YN…`, `3UrQTxE3N4Aj5izM…`.
 Live Gemini settlement is still unverified (the instruments resolve after this run).

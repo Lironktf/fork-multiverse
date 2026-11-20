@@ -1,3 +1,4 @@
+import { openTradeMarket } from "../helpers/trade-market";
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import {
@@ -13,7 +14,7 @@ import type {
 } from "../../src/lib/contracts/generated/app-types";
 import { DEVNET_GENESIS } from "../../src/lib/contracts/generated/network";
 
-test("devnet wallet deposits, buys, sells and evaluates the strategy through the real app", async ({
+test("devnet wallet deposits, buys, sells through the graph-linked Trade tab", async ({
   page,
   request,
 }) => {
@@ -92,10 +93,7 @@ test("devnet wallet deposits, buys, sells and evaluates the strategy through the
     .getByRole("button", { name: "Fork verification wallet", exact: true })
     .click();
   await page.keyboard.press("Escape");
-  await page
-    .getByTestId("positions")
-    .getByRole("button", { name: "FORK Positions" })
-    .click();
+  await openTradeMarket(page);
   const trading = page.getByTestId("trading");
   await expect(trading).toContainText("devnet", { timeout: 30_000 });
   await trading.getByLabel("Deposit amount").fill("100");
@@ -109,7 +107,7 @@ test("devnet wallet deposits, buys, sells and evaluates the strategy through the
     timeout: 60_000,
   });
   await trading.getByLabel("Trade shares").fill("2");
-  await trading.getByRole("button", { name: "Request on-chain quote" }).click();
+  await trading.getByRole("button", { name: "Review trade" }).click();
   await expect(trading.getByTestId("chain-quote")).toContainText(
     "Includes LP fee",
     { timeout: 45_000 },
@@ -120,7 +118,7 @@ test("devnet wallet deposits, buys, sells and evaluates the strategy through the
   });
   await trading.getByLabel("Trade direction").selectOption("sell");
   await trading.getByLabel("Trade shares").fill("1");
-  await trading.getByRole("button", { name: "Request on-chain quote" }).click();
+  await trading.getByRole("button", { name: "Review trade" }).click();
   await expect(trading.getByTestId("chain-quote")).toBeVisible({
     timeout: 45_000,
   });
@@ -129,12 +127,9 @@ test("devnet wallet deposits, buys, sells and evaluates the strategy through the
     timeout: 60_000,
   });
   await expect(
-    trading.getByRole("button", { name: "Redeem eligible balance" }),
-  ).toBeDisabled();
-  const strategy = trading.getByTestId("strategy-bot");
-  await strategy.locator("summary").click();
-  await strategy.getByRole("button", { name: "Evaluate strategy" }).click();
-  await expect(strategy.getByRole("status")).not.toBeEmpty({ timeout: 45_000 });
+    trading.getByRole("button", { name: /^Withdraw (refund|balance)$/ }),
+  ).toHaveCount(0);
+  await expect(page.getByTestId("strategy-bot")).toHaveCount(0);
   const signatures = await trading
     .locator("a[data-signature]")
     .evaluateAll((nodes) =>
@@ -161,59 +156,4 @@ test("devnet wallet deposits, buys, sells and evaluates the strategy through the
     path: "test-results/devnet-app.png",
     fullPage: true,
   });
-  // Test the proposal review controls with an explicitly synthetic response.
-  // The real engine's evaluation above remains unmodified and may abstain.
-  let limit = "0";
-  await page.route("**/api/solana/strategy", (route) =>
-    route.fulfill({
-      json: {
-        ok: true,
-        data: {
-          market: market!.address,
-          owner: owner.toBase58(),
-          now: Math.floor(Date.now() / 1000),
-          reason: "Synthetic browser fixture: proposal review only",
-          model: {
-            probability: 0.8,
-            lower: 0.7,
-            upper: 0.9,
-            samples: 100,
-            reason: "test fixture",
-          },
-          proposal: {
-            yes: true,
-            buy: true,
-            amount: "1000000",
-            quote: "500000",
-            limit,
-            expectedProfitMicro: 1,
-            worstModelProfitMicro: 1,
-          },
-        },
-      },
-    }),
-  );
-  await strategy.getByRole("button", { name: "Evaluate strategy" }).click();
-  await expect(strategy).toContainText("Synthetic browser fixture");
-  await strategy.getByRole("button", { name: "Review strategy quote" }).click();
-  await expect(trading.getByRole("alert")).toContainText(
-    "Price moved beyond strategy limits",
-    { timeout: 45_000 },
-  );
-  limit = "2000000";
-  await strategy.getByRole("button", { name: "Evaluate strategy" }).click();
-  await expect(
-    strategy.getByRole("button", { name: "Review strategy quote" }),
-  ).toBeEnabled();
-  await strategy.getByRole("button", { name: "Review strategy quote" }).click();
-  await expect(trading.getByTestId("chain-quote")).toBeVisible({
-    timeout: 45_000,
-  });
-  await expect(trading.getByLabel("Trade shares")).toHaveValue("1.000000");
-  await expect(trading.getByLabel("Slippage limit")).toHaveValue("0");
-  await expect(
-    trading.getByRole("button", { name: "Confirm buy YES" }),
-  ).toBeVisible();
-  // Reviewing a proposal must not submit a fourth trade or request a signature.
-  await expect(trading.locator("a[data-signature]")).toHaveCount(3);
 });

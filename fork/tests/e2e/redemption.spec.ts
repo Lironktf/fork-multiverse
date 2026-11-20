@@ -1,3 +1,4 @@
+import { openTradeMarket, mockMarketEvents } from "../helpers/trade-market";
 import { test, expect } from "@playwright/test";
 import {
   Connection,
@@ -306,6 +307,7 @@ for (const outcome of ["void", "settledYes", "settledNo"] as const) {
     await page.route("**/api/solana/markets", (route) =>
       route.fulfill({ json: { ok: true, data: [descriptor] } }),
     );
+    await mockMarketEvents(page, descriptor);
     await page.addInitScript(
       ({ genesis, address }) => {
         localStorage.clear();
@@ -326,17 +328,14 @@ for (const outcome of ["void", "settledYes", "settledNo"] as const) {
       .getByRole("button", { name: "Fork verification wallet", exact: true })
       .click();
     await page.keyboard.press("Escape");
-    await page
-      .getByTestId("positions")
-      .getByRole("button", { name: "FORK Positions" })
-      .click();
+    await openTradeMarket(page);
     const trading = page.getByTestId("trading");
     const display = `${Math.floor(expected.toNumber() / 1e6)}.${(expected.toNumber() % 1e6).toString().padStart(6, "0")}`;
     await expect(trading.getByTestId("balance-withdrawable")).toHaveText(
       display,
     );
     await trading
-      .getByRole("button", { name: "Redeem eligible balance" })
+      .getByRole("button", { name: /^Withdraw (refund|balance)$/ })
       .click();
     await expect(trading.getByTestId("balance-wallet-collateral")).toHaveText(
       display,
@@ -346,8 +345,8 @@ for (const outcome of ["void", "settledYes", "settledNo"] as const) {
       "0.000000",
     );
     await expect(
-      trading.getByRole("button", { name: "Redeem eligible balance" }),
-    ).toBeDisabled();
+      trading.getByRole("button", { name: /^Withdraw (refund|balance)$/ }),
+    ).toHaveCount(0);
     expect((await program.account.trader.fetch(trader)).claimed).toBe(true);
     const signature = await trading
       .locator("[data-signature]")

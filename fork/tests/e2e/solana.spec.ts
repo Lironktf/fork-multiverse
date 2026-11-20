@@ -1,3 +1,4 @@
+import { openTradeMarket } from "../helpers/trade-market";
 import { test, expect } from "@playwright/test";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { Program } from "@anchor-lang/core";
@@ -73,44 +74,30 @@ test("live Gemini → real local-validator trading in the original Fork UI", asy
     .getByRole("button", { name: "Fork verification wallet", exact: true })
     .click();
   await page.keyboard.press("Escape");
-  const positions = page.getByTestId("positions");
-  await positions.getByRole("button", { name: "FORK Positions" }).click();
-  await expect(positions.getByText(/Trade B conditional/)).toBeVisible();
-  const existing = positions.getByRole("button", {
-    name: "Choose another pair",
+  const selections = await Promise.all(
+    [
+      [parentSymbol, process.env.FORK_TEST_PARENT_CLOSE!],
+      [targetSymbol, process.env.FORK_TEST_TARGET_CLOSE!],
+    ].map(async ([instrument, close]) => {
+      const ticker = instrument.split("-")[1];
+      const result = await request.get(
+        `/api/solana/instrument?ticker=${ticker}&instrument=${instrument}`,
+      );
+      expect(result.ok()).toBeTruthy();
+      return { ...(await result.json()).data, close, reviewed: true };
+    }),
+  );
+  const prepared = await request.post("/api/solana/markets", {
+    data: { parent: selections[0], target: selections[1] },
   });
-  if (await existing.isVisible()) await existing.click();
-  for (const [role, query, symbol, close] of [
-    ["A", "Bitcoin", parentSymbol, process.env.FORK_TEST_PARENT_CLOSE!],
-    ["B", "Solana", targetSymbol, process.env.FORK_TEST_TARGET_CLOSE!],
-  ]) {
-    await positions.getByLabel(`Search ${role} contracts`).fill(query);
-    const item = positions
-      .getByTestId(`instrument-${role}`)
-      .locator(`[data-instrument="${symbol}"]`);
-    await expect(item).toBeVisible({ timeout: 30_000 });
-    await item.click();
-    await expect(
-      positions.getByLabel(`${role} trading close UTC`),
-    ).toBeVisible();
-    if (await positions.getByLabel(`${role} trading close UTC`).isEditable())
-      await positions.getByLabel(`${role} trading close UTC`).fill(close);
-    await positions.getByLabel(`Reviewed ${role} rules`).check();
-  }
-  await positions
-    .getByRole("button", { name: "Create or connect market" })
-    .click();
+  expect(prepared.ok(), await prepared.text()).toBeTruthy();
+  const market = (await prepared.json()).data as MarketDescriptor;
+  const marketAddress = market.address;
+  await openTradeMarket(page, marketAddress);
   const trading = page.getByTestId("trading");
-  await expect(trading).toBeVisible({ timeout: 60_000 });
-  await expect(trading).toContainText("pending");
+  await expect(trading).toContainText("Open for trading", { timeout: 60000 });
   const config = (await (await request.get("/api/solana/config")).json())
     .data as AppConfig;
-  const marketAddress = await positions
-    .getByLabel("Existing conditional market")
-    .inputValue();
-  const markets = (await (await request.get("/api/solana/markets")).json())
-    .data as MarketDescriptor[];
-  const market = markets.find((m) => m.address === marketAddress)!;
   const connection = new Connection(config.rpc, "confirmed");
   expect(await connection.getGenesisHash()).toBe(config.genesis);
   const program = new Program<ForkContracts>(idl as ForkContracts, {
@@ -165,9 +152,7 @@ test("live Gemini → real local-validator trading in the original Fork UI", asy
     return snapshot;
   };
   const fund = async () => {
-    await trading
-      .getByRole("button", { name: "Get mock collateral + SOL" })
-      .click();
+    await trading.getByRole("button", { name: "Get test USDC + SOL" }).click();
     await expect(trading.getByTestId("balance-wallet-collateral")).toHaveText(
       "1000.000000",
       { timeout: 30_000 },
@@ -185,9 +170,7 @@ test("live Gemini → real local-validator trading in the original Fork UI", asy
     await trading.getByLabel("Trade direction").selectOption(direction);
     await trading.getByLabel("Trade outcome").selectOption(side);
     await trading.getByLabel("Trade shares").fill(qty);
-    await trading
-      .getByRole("button", { name: "Request on-chain quote" })
-      .click();
+    await trading.getByRole("button", { name: "Review trade" }).click();
     await expect(trading.getByTestId("chain-quote")).toContainText(
       "Solana LMSR YES",
       { timeout: 30_000 },
@@ -226,8 +209,8 @@ test("live Gemini → real local-validator trading in the original Fork UI", asy
   await execute("no", "sell", "3", "5.000000");
   const alice = await audit(0, "partial sells");
   await expect(
-    trading.getByRole("button", { name: "Redeem eligible balance" }),
-  ).toBeDisabled();
+    trading.getByRole("button", { name: /^Withdraw (refund|balance)$/ }),
+  ).toHaveCount(0);
   await trading.getByLabel("Deposit amount").fill("1000000");
   await trading.getByRole("button", { name: "Deposit", exact: true }).click();
   await expect(trading.getByRole("alert")).toContainText(
@@ -236,7 +219,7 @@ test("live Gemini → real local-validator trading in the original Fork UI", asy
   );
   await trading.getByLabel("Trade direction").selectOption("sell");
   await trading.getByLabel("Trade shares").fill("999");
-  await trading.getByRole("button", { name: "Request on-chain quote" }).click();
+  await trading.getByRole("button", { name: "Review trade" }).click();
   await expect(trading.getByRole("alert")).toContainText("Simulation failed", {
     timeout: 30_000,
   });
@@ -255,7 +238,7 @@ test("live Gemini → real local-validator trading in the original Fork UI", asy
       }),
     }),
   );
-  await trading.getByRole("button", { name: "Request on-chain quote" }).click();
+  await trading.getByRole("button", { name: "Review trade" }).click();
   await expect(trading.getByRole("alert")).toContainText("Gemini unavailable");
   await page.unroute("**/api/solana/refresh");
   await wallet.switchAccount(1);
@@ -267,10 +250,7 @@ test("live Gemini → real local-validator trading in the original Fork UI", asy
   await wallet.switchAccount(0);
   await expect(trading.getByTestId("balance-yes")).toHaveText(alice.yes);
   await page.reload();
-  await page
-    .getByTestId("positions")
-    .getByRole("button", { name: "FORK Positions" })
-    .click();
+  await openTradeMarket(page);
   await expect(trading.getByTestId("balance-cash")).toHaveText(alice.cash, {
     timeout: 30_000,
   });

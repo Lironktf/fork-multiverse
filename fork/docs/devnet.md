@@ -34,14 +34,17 @@ operator action, not something the browser performs.
    network fees and account rent. The app's wallet menu links to this faucet.
 3. Open the app, choose a target to enter the workspace, and connect Phantom with
    the wallet button at the top right.
-4. Expand **FORK Positions**. Choose an existing conditional market, or inspect
-   two exact Gemini instruments, review their rules and set their trading closes.
-5. Choose **Get mock collateral**. This creates/fills the token account for the
-   app's pinned SPL test-collateral mint. SOL itself is not betting collateral.
-6. Enter a deposit amount and click **Deposit**. Review and sign in Phantom.
-7. Choose Buy/Sell, YES/NO and a share quantity. Click **Request on-chain quote**,
-   review the fee and maximum cost/minimum proceeds, then confirm in Phantom.
-8. Confirmed transaction links open Solana Explorer with `cluster=devnet`.
+4. Click **Trade** in the top bar. Under **Available markets**, click **Open in graph & trade** on the Copper/Brent market. The target and condition appear in the graph and in the Trade panel.
+5. Connect Phantom on devnet. Open **Add trading funds**, click **Get test USDC**, then **Deposit** an amount such as 100. Review and sign in Phantom.
+6. Choose Buy/Sell, YES/NO and a share quantity. Click **Review trade**, review the exact contract quote and fee, then **Confirm buy YES** (or the selected side) in Phantom.
+7. Selling returns cash to the market. Withdrawals appear after settlement; a failed condition returns the original deposit.
+8. To build another market, select a live Gemini target and fork a world with a live YES assumption (or a specific categorical outcome). Open **Trade → Build this market**, review both source rules and proposed trading closes, then **Create market**. The operator registers the pair and supplies 80 test USDC of liquidity through the standard contract instructions.
+
+Each trade supports one selected condition. If a graph world has more assumptions,
+the Trade panel explicitly selects which one applies. Binary NO conditions,
+custom events and demo events remain forecast-only. A binary NO target is tradable
+as the NO side of the target's exact YES instrument. Forecast probabilities are
+never execution prices. Transaction links open Explorer on the configured cluster.
 
 Selling credits conditional cash inside the market. Wallet redemption remains
 locked until valid settlement or VOID; this preserves original-deposit refunds.
@@ -68,31 +71,25 @@ registered. The service polls live Gemini outcomes. It must remain running for
 automatic reporting; it never invents a resolution from the elapsed clock.
 This market is separate from the synthetic settlement markets used in RPC tests.
 
-## Strategy bot
+## Rust contract sources
 
-The original command-line strategy still exists. Its engine is now shared with
-**FORK Positions → Strategy bot → Evaluate strategy**. The endpoint only reads
-market/inventory and source data; it never signs or trades for a browser wallet.
-An eligible proposal offers **Review strategy quote**, which obtains a fresh
-on-chain quote and checks the proposal's limit. You then confirm the trade in
-Phantom. Expired proposals must be evaluated again.
+The active program is `contracts/programs/fork-contracts/src/lib.rs`.
+`instructions.rs` defines account constraints, `state.rs` the lifecycle and
+accounts, and `math.rs` the integer LMSR pricing. `tests/market.rs` exercises
+instructions with LiteSVM. `docs/legacy/fork_positions` is historical only.
 
-This quantitative history/calibration strategy is distinct from the app's LLM
-forecasting panel. It may abstain because history, calibration, market eligibility,
-inventory or conservative edge is insufficient. Calibration is optional via
-`CALIBRATION_PATH`; it is not fabricated to make the bot trade. There is no
-unattended Phantom trading or implied delegated wallet authority.
+The optional research strategy remains a CLI tool. No bot, background auto-buy,
+or operator-owned trader is exposed in the app. Browser trades use the connected
+wallet and standard deposit, quote, trade, redeem and LP instructions.
 
-For an existing funded CLI test trader, from `fork/contracts`:
+## Consolidated branch
 
-```bash
-RPC_URL=https://api.devnet.solana.com ENABLE_DEVNET=yes \
-  SIGNER_PATH=/path/to/existing-test-trader.json npm run bot -- MARKET_PDA
-```
-
-The default is a paper proposal. The existing explicit execution flags remain
-`ENABLE_TESTNET_TRADING=yes` and `--execute-testnet`; despite their legacy names,
-the supported public cluster is devnet. The trader must already have a deposit.
+`demo/graph-markets` includes upstream `master` at `34d5336`, the LP fee and
+capital-efficiency changes, the verified devnet integration, and the graph-linked
+Trade UI. It uses program `2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv`
+with the matching generated IDL. The earlier upstream program ID is a different
+deployment; do not reuse its accounts with this IDL. The frontend can build
+without Anchor because the generated public client files are committed.
 
 ## Verification commands
 
@@ -100,6 +97,8 @@ From `fork/`, with the app/service running:
 
 ```bash
 npm run verify
+RUN_DEVNET_READ=1 npm test -- tests/e2e/devnet-read.spec.ts
+npm test -- tests/e2e/graph-trading.spec.ts
 (cd contracts && cargo clippy --all-targets -- -D warnings)
 npm --prefix contracts run test:validator
 npx playwright install --with-deps chromium
@@ -110,7 +109,7 @@ RUN_DEVNET_WALLET=1 \
 
 The devnet browser test uses an ephemeral Wallet Standard test signer kept in the
 test process. It tests real devnet RPC and SPL transfers, rejected signing,
-deposit, buy, sell, locked redemption and strategy evaluation. It does not claim
+deposit, buy, sell and locked redemption through the graph-linked Trade panel. It does not claim
 to automate the Phantom extension itself. It spends 0.03 test SOL to fund its
 test wallet plus fees and uses the current live market.
 

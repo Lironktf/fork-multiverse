@@ -8,7 +8,8 @@ async function proxy(
   context: { params: Promise<{ path: string[] }> },
 ) {
   try {
-    const service = process.env.FORK_LOCAL_SERVICE;
+    const service =
+      process.env.FORK_SERVICE_URL ?? process.env.FORK_LOCAL_SERVICE;
     if (!service)
       return NextResponse.json(
         {

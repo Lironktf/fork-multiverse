@@ -52,3 +52,6 @@ next-env.d.ts
 
 # Safe public configuration template
 !.env.example
+
+# Alternate local production builds
+.next-*/

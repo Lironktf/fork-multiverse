@@ -132,6 +132,8 @@ function Workspace({ openAtlas, atlasFork }: { openAtlas: () => void; atlasFork:
   const tablet = useMedia("(min-width: 760px)");
   const [discovery, setDiscovery] = useState(true);
   const [sheet, setSheet] = useState<"forecast" | "basket" | "discover">(atlasFork ? "forecast" : "basket");
+  const workspaceTab = useUI(s => s.workspaceTab);
+  useEffect(() => { if (workspaceTab === "trade") setSheet("forecast"); }, [workspaceTab]);
   useEffect(() => {
     if (atlasFork) setSheet("forecast");
   }, [atlasFork]);
@@ -195,13 +197,13 @@ function Workspace({ openAtlas, atlasFork }: { openAtlas: () => void; atlasFork:
               )}
             </AnimatePresence>
             {/* right: forecast + basket */}
-            <div className={`absolute bottom-[78px] right-4 flex w-[min(352px,40vw)] flex-col justify-end gap-3 ${desktop ? "top-[64px]" : "top-[150px]"}`}>
+            <div className={`absolute bottom-[78px] right-4 flex ${workspaceTab === "trade" ? "w-[min(400px,40vw)]" : "w-[min(352px,40vw)]"} flex-col justify-end gap-3 ${desktop ? "top-[64px]" : "top-[150px]"}`}>
               <div className="flex min-h-[160px] flex-1 flex-col justify-start">
                 <ForecastPanel />
               </div>
-              <div className="flex max-h-[48%] shrink-0 flex-col">
+              {workspaceTab !== "trade" && <div className="flex max-h-[48%] shrink-0 flex-col">
                 <Basket />
-              </div>
+              </div>}
             </div>
             {/* bottom */}
             <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-col items-center gap-3">

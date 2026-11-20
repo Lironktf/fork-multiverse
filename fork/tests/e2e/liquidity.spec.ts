@@ -1,3 +1,4 @@
+import { openTradeMarket, mockMarketEvents } from "../helpers/trade-market";
 import { test, expect } from "@playwright/test";
 import { BN, Program } from "@anchor-lang/core";
 import {
@@ -216,6 +217,7 @@ test("wallet funds, exits Funding, trades with fees and claims loss-making LP eq
   await page.route("**/api/solana/refresh", (r) =>
     r.fulfill({ json: { ok: true, data: {} } }),
   );
+  await mockMarketEvents(page, descriptor);
   await page.addInitScript(
     ({ genesis, address }) => {
       localStorage.clear();
@@ -236,12 +238,12 @@ test("wallet funds, exits Funding, trades with fees and claims loss-making LP eq
     .getByRole("button", { name: "Fork verification wallet", exact: true })
     .click();
   await page.keyboard.press("Escape");
-  await page
-    .getByTestId("positions")
-    .getByRole("button", { name: "FORK Positions" })
-    .click();
+  await openTradeMarket(page);
   const trading = page.getByTestId("trading"),
     liquidity = page.getByTestId("liquidity");
+  await trading
+    .getByText("Liquidity & contract details", { exact: true })
+    .click();
   await liquidity.locator("summary").click();
   await expect(liquidity).toContainText("1.00%");
   await trading.getByLabel("LP amount").fill("20");
@@ -271,7 +273,7 @@ test("wallet funds, exits Funding, trades with fees and claims loss-making LP eq
     "20.000000",
   );
   await liquidity.getByRole("button", { name: "Start funded market" }).click();
-  await expect(trading).toContainText("pending");
+  await expect(trading).toContainText("Open for trading");
   await expect(
     liquidity.getByRole("button", { name: "Withdraw LP funding" }),
   ).toBeDisabled();
@@ -282,7 +284,7 @@ test("wallet funds, exits Funding, trades with fees and claims loss-making LP eq
     "1000.000000",
   );
   await trading.getByLabel("Trade shares").fill("900");
-  await trading.getByRole("button", { name: "Request on-chain quote" }).click();
+  await trading.getByRole("button", { name: "Review trade" }).click();
   await expect(trading.getByTestId("chain-quote")).toContainText(
     "Includes LP fee:",
   );
@@ -313,6 +315,9 @@ test("wallet funds, exits Funding, trades with fees and claims loss-making LP eq
   expect(final.feesAccrued.gt(new BN(0))).toBe(true);
   expect(expected.lt(unit(20))).toBe(true);
   await wallet.switchAccount(0);
+  await trading
+    .getByText("Liquidity & contract details", { exact: true })
+    .click();
   await liquidity.locator("summary").click();
   await expect(liquidity.getByTestId("lp-LP withdrawable")).toHaveText(
     formatUnits(expected),
