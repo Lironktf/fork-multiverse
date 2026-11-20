@@ -45,3 +45,13 @@ test("crossing respects the comparator and never fires without an observation", 
   assert.equal(crosses(down, o(74.99)), true);
   assert.equal(crosses(up, null), false);
 });
+
+test("outcome mapping: binary YES/NO, categorical labels, single-contract categorical by label", async () => {
+  const { resolveOutcome } = await import("../app/autobuy.js");
+  const c = (sym: string, label: string) => ({ instrumentSymbol: sym, label, status: "active" });
+  assert.deepEqual(resolveOutcome({ type: "binary", contracts: [c("B", "Yes")] }, "NO"), { instrument: "B", yes: false });
+  assert.deepEqual(resolveOutcome({ type: "categorical", contracts: [c("X", "Alice"), c("Y", "Bob")] }, "Bob"), { instrument: "Y", yes: true });
+  assert.deepEqual(resolveOutcome({ type: "categorical", contracts: [c("S", "$70,000 or above")] }, "$70,000 or above"), { instrument: "S", yes: true });
+  assert.deepEqual(resolveOutcome({ type: "categorical", contracts: [c("S", "$70,000 or above")] }, "YES"), { instrument: "S", yes: true });
+  assert.throws(() => resolveOutcome({ type: "categorical", contracts: [c("X", "Alice"), c("Y", "Bob")] }, "Carol"), /not an open contract/);
+});

@@ -97,12 +97,14 @@ function validRawEvent(e: RawEvent): boolean {
     (e.type === "binary" || e.type === "categorical");
 }
 
-function shape(raw: RawEvent[], fetchedAt: number, allMarkets = false) {
+function shape(raw: RawEvent[], fetchedAt: number) {
   const now = Date.now();
   return raw
     .filter(validRawEvent)
-    .filter((e) => allMarkets || e.category?.toLowerCase() !== "sports")
-    .filter((e) => allMarkets || !e.expiryDate || new Date(e.expiryDate).getTime() - now > SHORT_HORIZON_MS)
+    // Atlas (allMarkets) spans every category, but keeps the same exclusions as the rest of
+    // FORK: sports and contracts expiring within 36h are not useful scenario inputs.
+    .filter((e) => e.category?.toLowerCase() !== "sports")
+    .filter((e) => !e.expiryDate || new Date(e.expiryDate).getTime() - now > SHORT_HORIZON_MS)
     .map((e) => normalizeEvent(e, fetchedAt));
 }
 
@@ -122,7 +124,8 @@ function collapseSeries(events: ForkEvent[], keepOrder = false) {
 /** The legacy view uses a category shortlist. Atlas pages through the public event catalog. */
 async function catalog(cats: (string | undefined)[], paginate = false) {
   const results = await Promise.allSettled(cats.map(async (category) => {
-    const pageSize = paginate ? 75 : 500;
+    // Gemini accepts limit=500 with offset paging (verified 2026-11-20: total 1003 → 3 pages)
+    const pageSize = 500;
     const params = new URLSearchParams({ status: "active", limit: String(pageSize) });
     if (category) params.set("category", category);
     const getPage = async () => {
@@ -195,8 +198,8 @@ export async function searchGeminiEvents(opts: { q?: string; category?: string; 
     const hits = searchEvents([...pool.values()], opts.q);
     const now = Date.now();
     const events = hits
-      .filter((h) => opts.allMarkets || h.event.category?.toLowerCase() !== "sports")
-      .filter((h) => opts.allMarkets || !h.event.expiryDate || new Date(h.event.expiryDate).getTime() - now > SHORT_HORIZON_MS)
+      .filter((h) => h.event.category?.toLowerCase() !== "sports")
+      .filter((h) => !h.event.expiryDate || new Date(h.event.expiryDate).getTime() - now > SHORT_HORIZON_MS)
       .map((h) => {
         const ev = normalizeEvent(h.event, fetchedAtOf.get(h.event.ticker) ?? now);
         ev.metadata = { ...ev.metadata, match: h.match, related: h.related };
@@ -213,7 +216,7 @@ export async function searchGeminiEvents(opts: { q?: string; category?: string; 
     };
   }
   const c = await loadCatalog();
-  const events = c.batches.flatMap((b) => shape(b.raw, b.fetchedAt, opts.allMarkets));
+  const events = c.batches.flatMap((b) => shape(b.raw, b.fetchedAt));
   return { events: opts.allMarkets ? events.sort((a, b) => (b.metadata.volumeUsd ?? 0) - (a.metadata.volumeUsd ?? 0)) : collapseSeries(events), fetchedAt: new Date(c.oldest).toISOString(), cached: c.cached, total: events.length, partial: c.partial };
 }
 

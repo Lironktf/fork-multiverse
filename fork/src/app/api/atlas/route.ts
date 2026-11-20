@@ -17,10 +17,18 @@ const output = z.object({
   pairs: z.array(z.object({ from: index, to: index, ...explanation })).max(24),
 });
 
+// Repeat visits to the same market/outcome/selection are served from memory.
+// ASSUMPTION: 10 minutes is short enough that Gemini's catalog and odds labels stay current.
+const CACHE_MS = 10 * 60_000;
+const cache = new Map<string, { at: number; body: unknown }>();
+
 export async function POST(req: Request) {
   const parsed = input.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Refresh Atlas or select a valid Gemini outcome to explore." }, { status: 400 });
   const { current, visited, providers } = parsed.data;
+  const cacheKey = JSON.stringify([current.ticker, current.outcome, [...visited].sort(), providers]);
+  const hit = cache.get(cacheKey);
+  if (hit && Date.now() - hit.at < CACHE_MS) return NextResponse.json(hit.body);
 
   try {
     const pool = providersFor(providers);
@@ -68,14 +76,12 @@ export async function POST(req: Request) {
         })),
       }),
     };
+    // every installed model family answers in parallel; the first valid answer wins
     let verified: z.infer<typeof output> | undefined;
-    for (const provider of pool.slice(0, 2)) {
-      try {
-        verified = output.parse((await runProvider(provider, call)).structured);
-        break;
-      } catch {
-        if (req.signal.aborted) throw new Error("Market link check was canceled.");
-      }
+    try {
+      verified = await Promise.any(pool.map(async (provider) => output.parse((await runProvider(provider, call)).structured)));
+    } catch {
+      if (req.signal.aborted) throw new Error("Market link check was canceled.");
     }
     if (!verified) return fallback();
     const seen = new Set<string>();
@@ -95,7 +101,10 @@ export async function POST(req: Request) {
     });
     const known = new Set(links.map(({ event }) => event.id));
     const suggestions = diverseMarketLinks([...links, ...ranked.filter(({ event }) => !known.has(event.id))], 20);
-    return NextResponse.json({ links: suggestions, pairs, ...coverage });
+    const body = { links: suggestions, pairs, ...coverage };
+    cache.set(cacheKey, { at: Date.now(), body });
+    if (cache.size > 200) cache.delete(cache.keys().next().value!);
+    return NextResponse.json(body);
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message.slice(0, 260) }, { status: 503 });
   }

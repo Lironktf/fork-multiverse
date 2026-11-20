@@ -293,7 +293,7 @@ export function ForkApp() {
                     useUI.getState().set({ panel: null });
                     setAtlasFork((count) => count + 1);
                     setAtlasOpen(false);
-                    void forkReality({ parentId: ORIGIN_ID, assumptions, engine: "auto" });
+                    void forkReality({ parentId: ORIGIN_ID, assumptions });
                   }} />
                 </div>
               )}

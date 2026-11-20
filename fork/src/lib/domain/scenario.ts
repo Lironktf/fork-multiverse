@@ -1,6 +1,7 @@
 import type { ForkEvent, TargetRef } from "./types";
 
-export const SCENARIO_LIMIT = 24;
+/** Assumptions one fork may add: the same cap as the basket (store/universe.ts BASKET_LIMIT). */
+export const SCENARIO_LIMIT = 8;
 
 export function validateScenario(
   target: TargetRef,

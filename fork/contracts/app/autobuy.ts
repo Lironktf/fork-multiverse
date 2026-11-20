@@ -167,7 +167,9 @@ export function resolveOutcome(
     (c) => c.status !== "settled" && c.status !== "invalid" && c.instrumentSymbol,
   );
   if (!live.length) throw new Error("This Gemini event has no open contract.");
-  if (e.type === "binary" || live.length === 1) {
+  // binary events use YES/NO; single-contract categorical events use the contract label
+  // (gemini-normalize.ts keeps actual outcome labels for every non-binary event)
+  if (e.type === "binary" || (live.length === 1 && (outcome === "YES" || outcome === "NO"))) {
     if (outcome !== "YES" && outcome !== "NO") throw new Error(`Unknown outcome ${outcome}.`);
     return { instrument: live[0]!.instrumentSymbol!, yes: outcome === "YES" };
   }
