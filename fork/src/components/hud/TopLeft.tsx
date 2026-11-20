@@ -1,5 +1,5 @@
 "use client";
-import { GitFork } from "lucide-react";
+import { Compass, GitFork } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useUniverse } from "@/store/universe";
 import { ancestry } from "@/lib/domain/verse";
@@ -16,14 +16,17 @@ export function Wordmark({ size = "sm" }: { size?: "sm" | "lg" }) {
   );
 }
 
-export function TopLeft() {
+export function TopLeft({ openAtlas }: { openAtlas: () => void }) {
   const { verses, currentVerseId } = useUniverse(useShallow((s) => ({ verses: s.verses, currentVerseId: s.currentVerseId })));
   const busy = useUI((s) => s.forkPhase !== "idle");
   const path = ancestry(verses, currentVerseId);
   const cur = verses[currentVerseId];
   return (
     <div className="pointer-events-auto flex flex-col gap-2.5">
-      <Wordmark />
+      <div className="flex items-center gap-2">
+        <Wordmark />
+        <button type="button" className="ibtn !h-7 !px-2" disabled={busy} onClick={openAtlas}><Compass size={13} /> Atlas</button>
+      </div>
       <div className="flex items-center gap-2">
         <span
           className="h-2 w-2 rounded-full"

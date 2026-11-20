@@ -5,7 +5,7 @@ import { ChevronsLeft, Plus, Search, Sparkles, Target, X } from "lucide-react";
 import type { EventCategory, ForkEvent } from "@/lib/domain/types";
 import { useUniverse } from "@/store/universe";
 import { useUI } from "@/store/ui";
-import { CATEGORY_LABEL, matches, useLibraryEvents, useLiveEvents, type SourceFilter } from "@/lib/client/search";
+import { CATEGORY_LABEL, useLibraryEvents, useLiveEvents, type SourceFilter } from "@/lib/client/search";
 import { addEventToBasket } from "@/lib/client/actions";
 import { fmtPct, fmtUsd, observedProbability } from "@/lib/domain/market";
 import { EventRow } from "./EventRow";
@@ -146,7 +146,8 @@ export function DiscoveryPanel({ onCollapse }: { onCollapse?: () => void }) {
   const live = useLiveEvents(q, effectiveSource === "all" || effectiveSource === "live");
   const lib = useLibraryEvents(q, cat);
 
-  const liveEvents = useMemo(() => (live.data?.events ?? []).filter((e) => (cat === "all" || e.category === cat) && matches(e, q)), [live.data, cat, q]);
+  // live results are already ranked full-text by the server (title, outcomes, rules, related topics)
+  const liveEvents = useMemo(() => (live.data?.events ?? []).filter((e) => cat === "all" || e.category === cat), [live.data, cat]);
   const rows: { header: string; note?: string; items: ForkEvent[] }[] = [];
   if (effectiveSource === "all" || effectiveSource === "live")
     rows.push({ header: "Live · Gemini", note: live.data?.fetchedAt ? `quoted ${new Date(live.data.fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : undefined, items: liveEvents });
@@ -209,8 +210,21 @@ export function DiscoveryPanel({ onCollapse }: { onCollapse?: () => void }) {
               <div className="mx-2 my-1 rounded-md border border-warn/25 bg-warn/[0.04] px-2.5 py-2 text-[11px] text-warn/90">Gemini is unreachable. No live prices are shown — nothing is substituted.</div>
             )}
             {g.header.startsWith("Live") && live.isLoading && <div className="px-3 py-3 text-[11px] text-ink-3">Fetching live markets…</div>}
+            {g.header.startsWith("Live") && q && g.items.length > 0 && g.items.every((e) => e.metadata.related) && (
+              <div className="px-3 pb-1 pt-1.5 text-[10.5px] leading-snug text-ink-3" data-testid="related-note">
+                No Gemini market mentions “{q}” directly. Closest related markets:
+              </div>
+            )}
             {g.items.length === 0 && !(g.header.startsWith("Live") && live.isLoading) && (
-              <div className="px-3 py-2 text-[11px] text-ink-3">{g.header.startsWith("Custom") ? "None yet — use ✦ to define one." : q ? `Nothing matches “${q}”.` : "No events in this category."}</div>
+              <div className="px-3 py-2 text-[11px] text-ink-3">{g.header.startsWith("Custom")
+                  ? "None yet — use ✦ to define one."
+                  : g.header.startsWith("Live") && q && live.isFetching
+                    ? "Searching Gemini…"
+                    : g.header.startsWith("Live") && q
+                      ? `No Gemini market mentions “${q}”${live.data?.searchedEvents ? ` — searched ${live.data.searchedEvents} live markets’ titles, outcomes and resolution rules` : ""}. Use ✦ to define it as a custom event.`
+                      : q
+                        ? `Nothing matches “${q}”.`
+                        : "No events in this category."}</div>
             )}
             {g.items.map((e) => (
               <div key={e.id} style={{ contentVisibility: "auto", containIntrinsicSize: "0 56px" }}>

@@ -12,10 +12,15 @@ import "server-only";
  *   7 Validate    zod schema, bounds, scenario echo; invalid → one retry → failed
  *   8 Store       SQLite (immutable once complete)
  *
- * The four roles share one underlying model family, so they are NOT
+ * Roles are spread across up to three model families (Claude, Codex, Grok)
+ * and everything that can run concurrently does: research fans out to every
+ * available provider in parallel, all four analysts run in parallel, the
+ * revision round runs in parallel, and next-fork search queries every
+ * provider in parallel and merges. Role-prompted analysts are still NOT
  * independent forecasters; the UI states this.
  */
 import { z } from "zod";
+import { ProviderMode as ProviderModeSchema } from "@/lib/domain/types";
 import {
   AnalystOutput,
   MODEL_ROLES,
@@ -28,7 +33,7 @@ import {
 import { observedProbability } from "@/lib/domain/market";
 import { ensembleMean, summarizeDisagreement } from "@/lib/forecast/aggregate";
 import { runDemoForecast, demoNextForks } from "@/lib/demo/engine";
-import { providerStatus, providersFor, runProvider, PROVIDER_LABEL, type Provider, type ProviderMode } from "./providers";
+import { providerStatus, providersFor, runProvider, PROVIDER_LABEL, type Provider } from "./providers";
 import { getResearch, loadForecast, putResearch, saveForecast } from "./db";
 
 export const ScenarioItemIn = z.object({
@@ -43,7 +48,7 @@ export const ForecastRequest = z.object({
   targetOutcome: z.string(),
   scenario: z.array(ScenarioItemIn).max(24),
   engine: z.enum(["auto", "demo"]).default("auto"),
-  providers: z.enum(["mixed", "claude", "codex"]).default("mixed"),
+  providers: ProviderModeSchema.default("mixed"),
   baseline: z
     .object({ value: z.number(), kind: z.enum(["MARKET", "MODEL", "DEMO"]), label: z.string() })
     .nullable()
@@ -57,13 +62,16 @@ const ROLES: ModelRole[] = ["causal", "empirical", "market", "skeptic"];
 export function engineStatus() {
   const p = providerStatus();
   return {
-    engine: p.claude || p.codex ? ("cli" as const) : ("demo" as const),
+    engine: p.claude || p.codex || p.grok ? ("cli" as const) : ("demo" as const),
     claude: p.claude,
     claudeVersion: p.claudeVersion,
     codex: p.codex,
     codexVersion: p.codexVersion,
+    grok: p.grok,
+    grokVersion: p.grokVersion,
     model: process.env.FORK_CLAUDE_MODEL ?? "sonnet",
     codexModel: process.env.FORK_CODEX_MODEL ?? "codex default",
+    grokModel: process.env.FORK_GROK_MODEL ?? "grok default",
     research: process.env.FORK_RESEARCH !== "0",
     revision: process.env.FORK_REVISION ?? "auto",
   };
@@ -138,6 +146,7 @@ const COMMON_RULES = `Rules:
 interface ResearchDigest {
   summary: string;
   findings: { claim: string; url: string; title: string; publisher: string }[];
+  researchedBy?: Provider[];
 }
 const ResearchSchema = z.object({
   summary: z.string(),
@@ -146,11 +155,8 @@ const ResearchSchema = z.object({
     .max(8),
 });
 
-async function research(req: ForecastRequest, provider: Provider): Promise<ResearchDigest | null> {
+async function researchWith(req: ForecastRequest, provider: Provider): Promise<ResearchDigest | null> {
   const target = req.target as ForkEvent;
-  const key = JSON.stringify([target.id, req.targetOutcome, req.scenario.map((s) => [(s.event as ForkEvent).id, s.outcome])]);
-  const cached = getResearch(key) as ResearchDigest | null;
-  if (cached) return cached;
   const r = await runProvider<ResearchDigest>(provider, {
     system:
       "You are a research assistant for a forecasting team. Use web search to gather CURRENT, citable facts. Never fabricate URLs: every url must be a page you actually found via search.",
@@ -167,7 +173,63 @@ Run at most 3 web searches. Return: summary (≤120 words of the current real-wo
   });
   const parsed = ResearchSchema.safeParse(r.structured);
   if (!parsed.success) return null;
-  const digest = { ...parsed.data, findings: parsed.data.findings.filter((f) => /^https?:\/\//.test(f.url)) };
+  return { ...parsed.data, findings: parsed.data.findings.filter((f) => /^https?:\/\//.test(f.url)) };
+}
+
+/** After the first provider returns, wait at most this long for the rest (ASSUMPTION: latency budget, not measured). */
+const RESEARCH_GRACE_MS = Number(process.env.FORK_RESEARCH_GRACE_MS ?? 25_000);
+
+/**
+ * Research fans out to every provider in the pool in parallel (each with its own
+ * web search). Findings are merged and de-duplicated by URL; the summary comes
+ * from the first provider to answer. Cached 6h on the scenario key.
+ */
+async function research(req: ForecastRequest, pool: Provider[]): Promise<ResearchDigest | null> {
+  const target = req.target as ForkEvent;
+  const key = JSON.stringify([target.id, req.targetOutcome, req.scenario.map((s) => [(s.event as ForkEvent).id, s.outcome])]);
+  const cached = getResearch(key) as ResearchDigest | null;
+  if (cached) return cached;
+  const done: { p: Provider; d: ResearchDigest }[] = [];
+  let firstAt = 0;
+  const tasks = pool.map((p) =>
+    researchWith(req, p)
+      .then((d) => {
+        if (d) {
+          done.push({ p, d });
+          firstAt ||= Date.now();
+        }
+      })
+      .catch(() => undefined),
+  );
+  const all = Promise.all(tasks);
+  // resolve when everyone is done, or RESEARCH_GRACE_MS after the first success
+  await new Promise<void>((resolve) => {
+    all.then(() => resolve());
+    const tick = setInterval(() => {
+      if (firstAt && Date.now() - firstAt > RESEARCH_GRACE_MS) {
+        clearInterval(tick);
+        resolve();
+      }
+    }, 500);
+    all.then(() => clearInterval(tick));
+  });
+  if (!done.length) return null;
+  const seen = new Set<string>();
+  const findings: ResearchDigest["findings"] = [];
+  // round-robin across providers so every family contributes sources
+  for (let i = 0; findings.length < 8 && done.some((x) => i < x.d.findings.length); i++)
+    for (const x of done) {
+      const f = x.d.findings[i];
+      if (f && !seen.has(f.url) && findings.length < 8) {
+        seen.add(f.url);
+        findings.push({ ...f, publisher: f.publisher });
+      }
+    }
+  const digest: ResearchDigest = {
+    summary: done[0].d.summary,
+    findings,
+    researchedBy: done.map((x) => x.p),
+  };
   putResearch(key, digest);
   return digest;
 }
@@ -198,14 +260,25 @@ function validateOutput(o: unknown, req: ForecastRequest, allowedUrls: Set<strin
 }
 
 /**
- * Role → provider. In mixed mode the two families alternate (A,C Claude · B,D
- * Codex) so the skeptic never shares a model family with the causal analyst.
+ * Role → provider. Each role has a preference order; the first family in the
+ * pool wins. With all three: A Claude · B Codex · C Grok · D Codex; with
+ * Claude+Codex: A,C Claude · B,D Codex (unchanged from the two-family setup).
+ * The skeptic never shares a family with the causal analyst when ≥2 are present.
  * ASSUMPTION: cross-family assignment yields more informative disagreement than
  * same-family prompting; overturned if mixed and single-family spreads match.
  */
-const MIXED_ASSIGNMENT: Record<ModelRole, Provider> = { causal: "claude", empirical: "codex", market: "claude", skeptic: "codex" };
+const ROLE_PREFERENCE: Record<ModelRole, Provider[]> = {
+  causal: ["claude", "grok", "codex"],
+  empirical: ["codex", "claude", "grok"],
+  market: ["grok", "claude", "codex"],
+  skeptic: ["codex", "grok", "claude"],
+};
 function providerFor(role: ModelRole, pool: Provider[]): Provider {
-  return pool.length > 1 ? MIXED_ASSIGNMENT[role] : pool[0];
+  return ROLE_PREFERENCE[role].find((p) => pool.includes(p)) ?? pool[0];
+}
+/** Retry on a different family: the next one in this role's preference order. */
+function fallbackFor(role: ModelRole, pool: Provider[], primary: Provider): Provider {
+  return ROLE_PREFERENCE[role].find((p) => p !== primary && pool.includes(p)) ?? primary;
 }
 
 async function runAnalyst(f: Forecast, role: ModelRole, req: ForecastRequest, digest: ResearchDigest | null, pool: Provider[]) {
@@ -219,7 +292,7 @@ async function runAnalyst(f: Forecast, role: ModelRole, req: ForecastRequest, di
     run.attempts = attempt;
     // a failed first attempt retries on the other family when one is available — the
     // result is labelled with the model that actually answered
-    const provider = attempt === 2 && pool.length > 1 ? pool.find((p) => p !== primary)! : primary;
+    const provider = attempt === 2 ? fallbackFor(role, pool, primary) : primary;
     run.provider = provider;
     try {
       const r = await runProvider(provider, {
@@ -274,15 +347,17 @@ async function runCliForecast(f: Forecast, req: ForecastRequest, pool: Provider[
     f.status = "researching";
     persist(f);
     try {
-      // Claude's WebSearch when Claude is in the pool, else Codex's live web search
-      digest = await research(req, pool.includes("claude") ? "claude" : "codex");
+      // every family searches the web in parallel; findings are merged
+      digest = await research(req, pool);
     } catch (e) {
       f.researchNote = `Research step failed (${(e as Error).message.slice(0, 120)}); analysts worked without fresh sources.`;
     }
   }
   if (digest) {
     f.sources = digest.findings.map<SourceRef>((x) => ({ title: x.title, url: x.url, publisher: x.publisher, note: x.claim }));
-    f.researchNote = digest.summary;
+    f.researchNote = digest.researchedBy?.length
+      ? `${digest.summary} [Research run in parallel by: ${digest.researchedBy.map((p) => PROVIDER_LABEL[p]).join(", ")}]`
+      : digest.summary;
   } else if (!f.researchNote) {
     f.researchNote = process.env.FORK_RESEARCH === "0" ? "Research disabled (FORK_RESEARCH=0)." : "Research returned no usable citations.";
   }
@@ -315,7 +390,7 @@ export function startForecast(raw: unknown): Forecast {
   if (existing) return existing; // idempotent: same id never re-runs
   const target = req.target as ForkEvent;
   const events = new Map<string, ForkEvent>(req.scenario.map((s) => [(s.event as ForkEvent).id, s.event as ForkEvent]));
-  const pool = req.engine === "demo" ? [] : providersFor(req.providers as ProviderMode);
+  const pool = req.engine === "demo" ? [] : providersFor(req.providers);
 
   if (!pool.length) {
     const f = runDemoForecast({
@@ -336,7 +411,7 @@ export function startForecast(raw: unknown): Forecast {
     verseId: req.verseId,
     targetEventId: target.id,
     targetOutcome: req.targetOutcome,
-    engine: pool.length > 1 ? "multi-cli" : pool[0] === "codex" ? "codex-cli" : "claude-cli",
+    engine: new Set(ROLES.map((r) => providerFor(r, pool))).size > 1 ? "multi-cli" : (`${pool[0]}-cli` as const),
     kind: "MODEL",
     baselineProbability: req.baseline?.value ?? null,
     baselineKind: req.baseline?.kind ?? null,
@@ -391,7 +466,7 @@ const NextForkSchema = z.object({
     .max(5),
 });
 
-export async function nextForks(raw: unknown): Promise<{ engine: "claude-cli" | "codex-cli" | "demo"; suggestions: NextForkSuggestion[] }> {
+export async function nextForks(raw: unknown): Promise<{ engine: "claude-cli" | "codex-cli" | "grok-cli" | "multi-cli" | "demo"; providers?: Provider[]; suggestions: NextForkSuggestion[] }> {
   const req = z
     .object({
       target: z.any(),
@@ -399,7 +474,7 @@ export async function nextForks(raw: unknown): Promise<{ engine: "claude-cli" | 
       scenario: z.array(ScenarioItemIn),
       candidates: z.array(z.any()).max(40),
       engine: z.enum(["auto", "demo"]).default("auto"),
-      providers: z.enum(["mixed", "claude", "codex"]).default("mixed"),
+      providers: ProviderModeSchema.default("mixed"),
     })
     .parse(raw);
   const pool = req.engine === "demo" ? [] : providersFor(req.providers);
@@ -411,8 +486,8 @@ export async function nextForks(raw: unknown): Promise<{ engine: "claude-cli" | 
     };
   }
   const candidates = req.candidates as ForkEvent[];
-  const provider: Provider = pool.includes("claude") ? "claude" : "codex";
-  const r = await runProvider<z.infer<typeof NextForkSchema>>(provider, {
+  const ids = new Set(candidates.map((c) => c.id));
+  const call = {
     model: process.env.FORK_CLAUDE_FAST_MODEL ?? process.env.FORK_CLAUDE_MODEL ?? "sonnet",
     system:
       "You help a user explore conditional futures. Identify which unresolved questions would most change the target probability inside the user's hypothetical world.",
@@ -426,15 +501,43 @@ ${candidates.map((c) => `- id=${c.id} | ${c.title} | outcomes: ${c.possibleOutco
 Propose up to 4 questions whose resolution would most move P(target). At most 2 may be NEW questions (eventId null) — e.g. the hidden "why" behind an existing assumption (soft landing vs recession-driven cuts). For each, estimate P(target | outcome) for every outcome listed. These are rough model estimates used only to rank questions.`,
     schema: z.toJSONSchema(NextForkSchema),
     timeoutMs: 120_000,
-  });
-  const parsed = NextForkSchema.parse(r.structured);
-  const ids = new Set(candidates.map((c) => c.id));
-  const suggestions = parsed.suggestions
-    .map((s) => {
+  };
+  // every family searches in parallel; a question proposed by several families is merged
+  const settled = await Promise.allSettled(
+    pool.map(async (p) => ({ p, out: NextForkSchema.parse((await runProvider<z.infer<typeof NextForkSchema>>(p, call)).structured) })),
+  );
+  const ok = settled.filter((r): r is PromiseFulfilledResult<{ p: Provider; out: z.infer<typeof NextForkSchema> }> => r.status === "fulfilled").map((r) => r.value);
+  if (!ok.length) throw new Error((settled[0] as PromiseRejectedResult).reason?.message ?? "next-fork search failed");
+  const merged = new Map<string, NextForkSuggestion & { n: number }>();
+  for (const { p, out } of ok)
+    for (const s of out.suggestions) {
       const known = s.eventId && ids.has(s.eventId) ? s.eventId : null;
       const ps = s.conditional.map((c) => c.probability);
-      return { ...s, eventId: known, swing: ps.length ? Math.max(...ps) - Math.min(...ps) : 0 };
-    })
-    .sort((a, b) => b.swing - a.swing);
-  return { engine: provider === "claude" ? "claude-cli" : "codex-cli", suggestions };
+      const swing = ps.length ? Math.max(...ps) - Math.min(...ps) : 0;
+      const key = known ?? s.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const prev = merged.get(key);
+      if (!prev) {
+        merged.set(key, { ...s, eventId: known, swing, proposedBy: [p], n: 1 });
+        continue;
+      }
+      // average swing and per-outcome conditionals across the families that proposed it
+      prev.swing = (prev.swing * prev.n + swing) / (prev.n + 1);
+      prev.conditional = prev.conditional.map((c) => {
+        const o = s.conditional.find((x) => x.outcome === c.outcome);
+        return o ? { outcome: c.outcome, probability: (c.probability * prev.n + o.probability) / (prev.n + 1) } : c;
+      });
+      if (!prev.proposedBy!.includes(p)) prev.proposedBy!.push(p);
+      prev.n++;
+    }
+  // questions several families independently raised rank first, then by swing
+  const suggestions = [...merged.values()]
+    .sort((a, b) => b.proposedBy!.length - a.proposedBy!.length || b.swing - a.swing)
+    .slice(0, 6)
+    .map((x) => {
+      const { n, ...rest } = x;
+      void n;
+      return rest;
+    });
+  const used = ok.map((x) => x.p);
+  return { engine: used.length > 1 ? "multi-cli" : (`${used[0]}-cli` as "claude-cli" | "codex-cli" | "grok-cli"), providers: used, suggestions };
 }
