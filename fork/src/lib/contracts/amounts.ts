@@ -1,11 +1,11 @@
-/** Six-decimal integers throughout; never parse financial amounts via floats. */
+/** Nine-decimal SOL integers throughout; never parse financial amounts via floats. */
 export function parseUnits(value: string): bigint {
-  if (!/^\d+(\.\d{1,6})?$/.test(value))
-    throw new Error("Enter a positive amount with at most six decimals.");
+  if (!/^\d+(\.\d{1,9})?$/.test(value))
+    throw new Error("Enter a positive amount with at most nine decimals.");
   const [whole, fraction = ""] = value.split(".");
   const units =
-    BigInt(whole) * BigInt(1_000_000) + BigInt(fraction.padEnd(6, "0"));
-  if (units <= BigInt(0) || units > BigInt("1000000000000"))
+    BigInt(whole) * BigInt(1_000_000_000) + BigInt(fraction.padEnd(9, "0"));
+  if (units <= BigInt(0) || units > BigInt("1000000000000000"))
     throw new Error("Amount must be between 0 and 1,000,000.");
   return units;
 }
@@ -13,7 +13,7 @@ export function formatUnits(
   value: { toString(): string } | null | undefined,
 ): string {
   const n = BigInt(value?.toString() ?? "0");
-  return `${n / BigInt(1_000_000)}.${(n % BigInt(1_000_000)).toString().padStart(6, "0")}`;
+  return `${n / BigInt(1_000_000_000)}.${(n % BigInt(1_000_000_000)).toString().padStart(9, "0")}`;
 }
 export function executionLimit(
   cost: bigint,

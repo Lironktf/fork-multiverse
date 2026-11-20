@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 export SIGNER_PATH="$(realpath "$SIGNER_PATH")"
 export RPC_URL=https://api.devnet.solana.com
 export ENABLE_DEVNET=yes
-export FORK_APP_DIR="${FORK_APP_DIR:-.local/devnet-app}"
+export FORK_APP_DIR="${FORK_APP_DIR:-.local/devnet-sol}"
 export FORK_SERVICE_PORT="${FORK_SERVICE_PORT:-8787}"
 export FORK_SERVICE_URL="http://127.0.0.1:$FORK_SERVICE_PORT"
 export NEXT_PUBLIC_SOLANA_CLUSTER=devnet

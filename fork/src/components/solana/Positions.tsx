@@ -135,9 +135,9 @@ function Trading({
     [connection, config, market, wallet.publicKey],
   );
   const [state, setState] = useState<ChainState | null>(null);
-  const [amount, setAmount] = useState("100");
-  const [lpAmount, setLpAmount] = useState("40");
-  const [quantity, setQuantity] = useState("10");
+  const [amount, setAmount] = useState("0.1");
+  const [lpAmount, setLpAmount] = useState("0.05");
+  const [quantity, setQuantity] = useState("0.01");
   const [yes, setYes] = useState(initialYes);
   const [buy, setBuy] = useState(true);
   const [slippage, setSlippage] = useState(50);
@@ -216,9 +216,9 @@ function Trading({
     )
       tradeProblem = `You do not own enough ${yes ? "YES" : "NO"} shares to sell.`;
     if (buy && state?.trader?.cash.isZero())
-      tradeProblem = "Add trading funds before buying shares.";
+      tradeProblem = "Deposit SOL before buying shares.";
   } catch {
-    tradeProblem = "Enter a positive share amount with up to six decimals.";
+    tradeProblem = "Enter a positive share amount with up to nine decimals.";
   }
   const signer = wallet.signTransaction;
   const stale =
@@ -253,8 +253,7 @@ function Trading({
   return (
     <div className="mt-3 border-t border-line pt-3" data-testid="trading">
       <p className="text-sm text-ink-3">
-        Wallet {short(wallet.publicKey.toBase58())} · {config.cluster} · test
-        USDC
+        Wallet {short(wallet.publicKey.toBase58())} · {config.cluster} · SOL
       </p>
       <div className="mt-2 flex items-center justify-between">
         <span className="text-ink">
@@ -322,15 +321,11 @@ function Trading({
             <summary className="cursor-pointer text-ink-3">
               {state.trader
                 ? "Full balance details"
-                : `Wallet balance · ${Number(formatUnits(state.walletCollateral)).toFixed(2)} test USDC`}
+                : `Wallet balance · ${Number(formatUnits(state.walletCollateral)).toFixed(2)} SOL`}
             </summary>
             <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-sm">
               {[
-                [
-                  "Wallet collateral",
-                  state.walletCollateral,
-                  "wallet-collateral",
-                ],
+                ["Wallet SOL", state.walletCollateral, "wallet-collateral"],
                 ["Total deposited", state.trader?.principal, "principal"],
                 ["Available to trade", state.trader?.cash, "cash"],
                 ["YES holdings", state.trader?.yes, "yes"],
@@ -356,7 +351,7 @@ function Trading({
                 ? "Cash unlocks at settlement. A failed or invalid condition refunds your original deposit."
                 : state.status === "void"
                   ? "This market was cancelled. Withdraw your original deposit."
-                  : "Withdraw your remaining cash plus 1 test USDC for each winning share."}
+                  : "Withdraw your remaining cash plus 1 SOL for each winning share."}
           </p>
         </>
       )}
@@ -365,30 +360,21 @@ function Trading({
         open={!!state && !state.trader}
       >
         <summary className="cursor-pointer font-medium text-ink">
-          Add trading funds
+          Deposit SOL
         </summary>
         <p className="mt-2 text-sm text-ink-3">
-          Get free test USDC, then deposit the amount you want to trade. SOL
-          pays network fees.
+          Deposit SOL from your wallet. Keep some SOL available for network fees
+          and account rent.
         </p>
-        <button
-          className={`${button} mt-3`}
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              await api("faucet", { owner: wallet.publicKey!.toBase58() });
-            })
-          }
-        >
-          {config.cluster === "localnet"
-            ? "Get test USDC + SOL"
-            : "Get test USDC"}
-        </button>
         {config.cluster === "devnet" && (
-          <p className="mt-1 text-sm text-ink-3">
-            Devnet SOL pays network fees. Use the wallet’s Get devnet SOL
-            button; test USDC is separate test collateral.
-          </p>
+          <a
+            className="mt-2 inline-flex items-center gap-1 text-sm text-accent"
+            href="https://faucet.solana.com"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Get devnet SOL <ExternalLink size={12} />
+          </a>
         )}
         <div className="mt-2 flex gap-2">
           <input
@@ -405,7 +391,7 @@ function Trading({
               void run(() => client.deposit(amount, signer, setMessage))
             }
           >
-            Deposit
+            Deposit SOL
           </button>
         </div>
       </details>
@@ -490,11 +476,11 @@ function Trading({
             >
               <div className="num text-ink">
                 {quote.buy ? "Cost" : "Conditional proceeds"}:{" "}
-                {formatUnits(BigInt(quote.cost))} test USDC
+                {formatUnits(BigInt(quote.cost))} SOL
               </div>
               <div className="mt-1 text-ink-3">
-                Includes LP fee: {formatUnits(BigInt(quote.fee))} test USDC.
-                Refunded on VOID.
+                Includes LP fee: {formatUnits(BigInt(quote.fee))} SOL. Refunded
+                on VOID.
               </div>
               {quote.probability !== null && (
                 <div className="mt-1 text-ink-2">
@@ -526,7 +512,7 @@ function Trading({
           )}
           <p className="mt-2 text-sm text-ink-3">
             {buy
-              ? "Each winning share pays 1 test USDC if the condition is met."
+              ? "Each winning share pays 1 SOL if the condition is met."
               : "Selling returns cash to this market. You can withdraw after settlement."}
           </p>
         </>
@@ -661,7 +647,7 @@ function Trading({
               <br />
               Confirmed slot {state.slot}
               <br />
-              Vault {formatUnits(state.vaultCollateral)} test USDC
+              Vault {formatUnits(state.vaultCollateral)} SOL
             </div>
             {[
               ["A", state.parent],
@@ -888,7 +874,7 @@ function PositionsContent() {
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-base font-medium text-ink">Trade this world</h2>
         <span className="rounded-full border border-accent/30 px-2 py-0.5 text-xs text-accent">
-          {SOLANA_CLUSTER} · test funds
+          {SOLANA_CLUSTER} · SOL
         </span>
       </div>
       <p className="mt-1 text-ink-3">
@@ -975,7 +961,7 @@ function PositionsContent() {
               </button>
               <p className="mt-2 text-xs text-ink-3">
                 Review the source rules before creating. New markets start at
-                50% with 80 test USDC of sponsored liquidity.
+                50% with 0.1 SOL of sponsored liquidity.
               </p>
             </>
           )}

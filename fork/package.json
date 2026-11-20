@@ -13,7 +13,7 @@
     "contracts:sync": "npm --prefix contracts run app:sync",
     "format:check": "node scripts/format-integration.mjs",
     "format": "node scripts/format-integration.mjs --write",
-    "test:solana": "playwright test tests/e2e/solana.spec.ts",
+    "test:solana": "playwright test tests/e2e/sol-native.spec.ts",
     "setup": "npm ci && npm --prefix contracts ci && npm run contracts:build && npm run contracts:sync",
     "contracts:build": "npm --prefix contracts run build",
     "contracts:verify": "npm --prefix contracts run verify",

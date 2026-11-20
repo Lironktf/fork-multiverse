@@ -6,10 +6,11 @@ import {
   claimable,
 } from "../../src/lib/contracts/amounts";
 
-test("collateral parsing and slippage preserve micro units", () => {
-  expect(formatUnits(parseUnits("12.000001"))).toBe("12.000001");
-  for (const value of ["0", "-1", "1e6", "1.0000001", "NaN", "1000001"])
+test("collateral parsing and slippage preserve lamports", () => {
+  expect(formatUnits(parseUnits("12.000001"))).toBe("12.000001000");
+  for (const value of ["0", "-1", "1e6", "1.0000000001", "NaN", "1000001"])
     expect(() => parseUnits(value)).toThrow();
+  expect(parseUnits("0.000000001")).toBe(1n);
   expect(executionLimit(BigInt(101), true, 50)).toBe(BigInt(102));
   expect(executionLimit(BigInt(101), false, 50)).toBe(BigInt(100));
   expect(() => executionLimit(BigInt(1), true, 501)).toThrow();

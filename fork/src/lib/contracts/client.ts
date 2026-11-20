@@ -11,10 +11,11 @@ import {
   type TransactionInstruction,
 } from "@solana/web3.js";
 import {
-  getAssociatedTokenAddressSync,
+  NATIVE_MINT,
   TOKEN_PROGRAM_ID,
   unpackAccount,
 } from "@solana/spl-token";
+import { nativeSolAccount } from "./generated/native-sol";
 import idl from "./generated/idl.json";
 import build from "./generated/build.json";
 import type { ForkContracts } from "./generated/fork_contracts";
@@ -47,6 +48,10 @@ export function validateConfig(config: AppConfig) {
       "Incompatible program or IDL. Run npm run app:sync in contracts and rebuild Fork.",
     );
   validateNetwork(config.cluster, config.rpc, config.genesis);
+  if (config.mint !== NATIVE_MINT.toBase58())
+    throw new Error(
+      "This deployment still uses legacy collateral. Start the SOL-backed service before trading.",
+    );
 }
 export function pda(...seeds: (string | PublicKey)[]) {
   return PublicKey.findProgramAddressSync(
@@ -74,13 +79,11 @@ export function marketClient(
   };
   const mint = new PublicKey(config.mint),
     vault = new PublicKey(market.vault);
-  const userToken = getAssociatedTokenAddressSync(mint, owner);
   const lpAddress = pda("lp", accounts.market, owner);
   const funds = {
     ...accounts,
     mint,
     vault,
-    userToken,
     tokenProgram: TOKEN_PROGRAM_ID,
   };
   let minimumSlot = 0;
@@ -104,7 +107,7 @@ export function marketClient(
       accounts.parent,
       accounts.target,
       accounts.trader,
-      userToken,
+      owner,
       vault,
       lpAddress,
     ];
@@ -158,9 +161,6 @@ export function marketClient(
       (!trader.owner.equals(owner) || !trader.market.equals(accounts.market))
     )
       throw new Error("Trader account does not belong to this wallet/market.");
-    const walletToken = response.value[5]
-      ? unpackAccount(userToken, response.value[5], TOKEN_PROGRAM_ID)
-      : null;
     const vaultToken = unpackAccount(
       vault,
       response.value[6],
@@ -169,8 +169,9 @@ export function marketClient(
     if (
       !vaultToken.mint.equals(mint) ||
       !vaultToken.owner.equals(accounts.market) ||
-      (walletToken &&
-        (!walletToken.mint.equals(mint) || !walletToken.owner.equals(owner)))
+      !vaultToken.isNative ||
+      BigInt(response.value[6]!.lamports) <
+        vaultToken.amount + (vaultToken.rentExemptReserve ?? 0n)
     )
       throw new Error("Collateral account mismatch.");
     const status = Object.keys(m.status)[0];
@@ -200,7 +201,7 @@ export function marketClient(
       liquidity: liquidityMetrics(m, lp, status),
       status,
       fingerprint,
-      walletCollateral: walletToken?.amount ?? BigInt(0),
+      walletCollateral: BigInt(response.value[5]?.lamports ?? 0),
       vaultCollateral: vaultToken.amount,
       withdrawable: claimable(status, trader),
     };
@@ -271,9 +272,10 @@ export function marketClient(
       amount = parseUnits(value);
     if (state.walletCollateral < amount)
       throw new Error(
-        "Insufficient mock collateral. Use Get mock collateral first.",
+        "Insufficient SOL. Add devnet SOL to your wallet and leave enough for network fees and account rent.",
       );
-    const instructions: TransactionInstruction[] = [];
+    const native = await nativeSolAccount(connection, owner, amount);
+    const instructions: TransactionInstruction[] = [...native.open];
     if (!state.trader)
       instructions.push(
         await program.methods
@@ -289,8 +291,9 @@ export function marketClient(
     instructions.push(
       await program.methods
         .deposit(new BN(amount.toString()))
-        .accountsStrict(funds)
+        .accountsStrict({ ...funds, userToken: native.address })
         .instruction(),
+      native.close,
     );
     return send(instructions, sign, progress);
   }
@@ -396,8 +399,16 @@ export function marketClient(
       throw new Error(
         "No withdrawable balance. Conditional gains remain locked until final settlement.",
       );
+    const native = await nativeSolAccount(connection, owner, 0n);
     return send(
-      [await program.methods.redeem().accountsStrict(funds).instruction()],
+      [
+        ...native.open,
+        await program.methods
+          .redeem()
+          .accountsStrict({ ...funds, userToken: native.address })
+          .instruction(),
+        native.close,
+      ],
       sign,
       progress,
     );
@@ -419,7 +430,6 @@ export function marketClient(
       lp: lpAddress,
       mint,
       vault,
-      userToken,
       tokenProgram: TOKEN_PROGRAM_ID,
     };
     if (action === "fund") {
@@ -427,7 +437,11 @@ export function marketClient(
       if (!state.liquidity.canFund)
         throw new Error("Funding closes when trading starts.");
       if (amount > state.walletCollateral)
-        throw new Error("Insufficient mock collateral.");
+        throw new Error(
+          "Insufficient SOL. Leave enough for fees and account rent.",
+        );
+      const native = await nativeSolAccount(connection, owner, amount);
+      instructions.push(...native.open);
       if (!state.lp)
         instructions.push(
           await program.methods
@@ -443,8 +457,9 @@ export function marketClient(
       instructions.push(
         await program.methods
           .fundLp(new BN(amount.toString()))
-          .accountsStrict(lpFunds)
+          .accountsStrict({ ...lpFunds, userToken: native.address })
           .instruction(),
+        native.close,
       );
     } else if (action === "withdraw") {
       if (!state.liquidity.canWithdraw)
@@ -452,11 +467,14 @@ export function marketClient(
       const amount = state.liquidity.terminal
         ? state.liquidity.withdrawable
         : parseUnits(value);
+      const native = await nativeSolAccount(connection, owner, 0n);
       instructions.push(
+        ...native.open,
         await program.methods
           .withdrawLp(new BN(amount.toString()))
-          .accountsStrict(lpFunds)
+          .accountsStrict({ ...lpFunds, userToken: native.address })
           .instruction(),
+        native.close,
       );
     } else {
       instructions.push(

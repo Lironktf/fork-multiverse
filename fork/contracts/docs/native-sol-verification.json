@@ -1,0 +1,40 @@
+{
+  "verifiedAt": "2026-11-20",
+  "network": "localnet",
+  "collateral": "native SOL",
+  "binarySha256": "507ee8c5d4cf511ec4963606538757d4c98cf26a9cdbbcb94f58be53c8181f13",
+  "checks": [
+    "Real wallet SOL deposit, buy and sell",
+    "Rejected signature leaves vault unchanged",
+    "Existing wrapped-SOL account unchanged",
+    "Temporary native accounts closed atomically",
+    "SOL payout equals entitlement minus transaction fee",
+    "One-time claims for YES, NO and VOID"
+  ],
+  "redemptions": [
+    {
+      "fixture": true,
+      "at": "2026-11-20T08:22:22.271Z",
+      "outcome": "void",
+      "market": "7ez6Dkb5HFUknFvCK645pwwEAsDzQ1tPannfMWvK5x4a",
+      "signature": "4JgYzpbKNfuvikHUqUpfKyFFbhi87EPRRcRFRMKRNggbxbWcVD9bBZurnCNXQzKJ3KmCvjQg1TmSpYccCBUdyC3f",
+      "payout": "0.100000000"
+    },
+    {
+      "fixture": true,
+      "at": "2026-11-20T08:22:54.416Z",
+      "outcome": "settledYes",
+      "market": "FmD2uGEvWNKtWFWYNo4GQkUExRizJM2cwcHNdEtReGbB",
+      "signature": "5xtPrwYHYrn8cj7fc2gJF81JiQbTeeNG8c83r4eEfhi3YTu2hbbbP9sG6btUvySh6juUfFTEtbAFdztUMbNtVygU",
+      "payout": "0.104875048"
+    },
+    {
+      "fixture": true,
+      "at": "2026-11-20T08:23:25.336Z",
+      "outcome": "settledNo",
+      "market": "4pMXMgcxYP2LX8XvE4BXEYFQjrTpET11F5pvEvHqBHzS",
+      "signature": "4XuDcA1Hk5FLdPW6L4dGvSXtejDZDPqN6XxdmFFVGgvfffgi5LTRq9RRviA1aLSeMXp4W8tyom6WkzrnNZVBfapq",
+      "payout": "0.094875048"
+    }
+  ]
+}

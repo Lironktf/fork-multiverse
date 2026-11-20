@@ -48,5 +48,7 @@
         "XQiEfDyF4mpCLgx6a1XHaXkZRhQcAZw5CU1Fgj8WJ1CZuSAeiA77hzV7cumZN9e3QKfAuVc58okMn4RJPgGiK4P"
       ]
     }
-  ]
+  ],
+  "historical": true,
+  "note": "Legacy six-decimal test collateral deployment. These balances are separate from the native SOL application."
 }

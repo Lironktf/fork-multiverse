@@ -56,7 +56,11 @@ export function WalletButton({ showLabel = false }: { showLabel?: boolean }) {
   const getSol = async () => {
     if (!publicKey) return;
     if (SOLANA_CLUSTER === "localnet") {
-      useUI.getState().toast("Open Trade and choose Get test USDC + SOL.");
+      useUI
+        .getState()
+        .toast(
+          "Fund this wallet from your local validator using solana airdrop.",
+        );
       return;
     }
     try {

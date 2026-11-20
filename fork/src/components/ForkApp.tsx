@@ -151,7 +151,7 @@ function Workspace({ openAtlas, atlasFork }: { openAtlas: () => void; atlasFork:
       const w = window.innerWidth;
       const h = window.innerHeight;
       engine.insets = tablet
-        ? { l: discovery && desktop ? Math.min(316, w * 0.3) + 24 : 24, r: Math.min(352, w * (desktop ? 0.34 : 0.4)) + 24, t: desktop ? 60 : 140, b: 76 }
+        ? { l: discovery && desktop ? Math.min(316, w * 0.3) + 24 : 24, r: Math.min(workspaceTab === "trade" ? 400 : 352, w * 0.4) + 24, t: desktop ? 60 : 140, b: 76 }
         : { l: 0, r: 0, t: 150, b: h * 0.5 };
     };
     apply();
@@ -161,7 +161,7 @@ function Workspace({ openAtlas, atlasFork }: { openAtlas: () => void; atlasFork:
     }
     window.addEventListener("resize", apply);
     return () => window.removeEventListener("resize", apply);
-  }, [tablet, desktop, discovery]);
+  }, [tablet, desktop, discovery, workspaceTab]);
 
   return (
     <>

@@ -14,29 +14,19 @@ and compare worlds side by side.
 
 ---
 
-## Solana: "If this happens, buy" (devnet)
+## Solana: build and trade with devnet SOL
 
-The conditional-market program is **deployed on Solana devnet** at
-[`13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN`](https://explorer.solana.com/address/13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN?cluster=devnet)
-(on-chain bytes verified identical to `target/deploy/fork_contracts.so`, sha256 `30c26287…`).
+Use **Trade → Available markets → Open in graph & trade** to restore a market's
+exact target and condition in the graph. Connect a devnet wallet, deposit SOL,
+and review a YES/NO buy or sell before signing. To build a market, select a live
+target and condition in the graph and review their source rules in Trade.
 
-In any world whose target is a live Gemini market, the **If this happens, buy** card says:
-_if_ one of this world's assumptions (a live Gemini outcome) _hits_ N% odds on Gemini,
-_buy_ shares of the target. Arming it registers the exact Gemini contracts on-chain,
-creates the market "B given A = YES" if needed (integer LMSR with a mock-USDC subsidy),
-escrows the max cost, and the FORK service watches A's Gemini odds every 15 s. When the
-line is crossed it buys once, with the max cost enforced on-chain as the trade limit.
-If A ends up not happening the market voids and every deposit is refunded. The top-bar ⚡
-lists every rule. Trades run from FORK's auto-trader account with **mock USDC**; the
-oracle (Gemini result → on-chain report) is FORK's service key. Verified on devnet
-2026-11-20: rule armed in 22 s, fired at 98.5%, trade
-[`5JqcHLWW…`](https://explorer.solana.com/tx/5JqcHLWW8LxK7EC9WFb4DzTpWWdXsxD83i8A7vNNsY23fsLS36vyjisD2E4NycXfs3LfbD5eMifZ8Ptdp4ZEa7Xp?cluster=devnet).
-
-Run the service: `fork/contracts/scripts/devnet-service.sh` (uses a Helius devnet RPC if
-`~/.config/helius/api_key` exists, otherwise public devnet; the key never reaches the
-browser, logs or error messages), then start the app with
-`FORK_LOCAL_SERVICE=http://127.0.0.1:8788`. Details: [integration](docs/integration.md),
-[verification](docs/verification.md).
+The active program is `2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv`.
+The Rust implementation lives in [`contracts/programs/fork-contracts/src`](contracts/programs/fork-contracts/src).
+See the [demo walkthrough](docs/devnet.md) for startup, backing, settlement rules,
+and verification. The app uses native SOL accounts and never mints collateral.
+The operator supplies initial liquidity and reports actual Gemini outcomes;
+users sign their own deposits, trades and withdrawals.
 
 ## Run it
 
@@ -51,14 +41,14 @@ Then run each process in its own terminal, all from `fork/`:
 
 ```bash
 npm run validator   # persistent local validator and deployed program
-npm run oracle      # mock collateral, configuration, live Gemini oracle
+npm run oracle      # SOL configuration, liquidity, live Gemini oracle
 npm run dev -- --hostname 127.0.0.1  # http://127.0.0.1:3000
 ```
 
 `npm run verify` builds and checks both packages. Browser tests additionally need
 these services running; see [the workflow](docs/integration.md) for live and
-fixture test commands. `npm run build` and `npm run dev` automatically synchronize
-the generated client from the built contracts.
+fixture test commands. Generated public client files are committed; after changing
+the contracts, rebuild them and run `npm run contracts:sync`.
 
 No Gemini API keys are required. Generate the browser IDL first with
 `npm --prefix contracts run app:sync` after building the contracts.
@@ -137,7 +127,7 @@ illustrative). Event sources are tagged **Gemini**, **Demo**, **Custom** or
 | Demo engine and demo library                                                                             | **Demonstration.** 4 targets and 14 hypothetical events with authored, illustrative log-odds effects. Labelled DEMO everywhere. Live events added to a demo-engine scenario are explicitly ignored, never invented.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Verse persistence                                                                                        | **Live:** localStorage (primary) plus a debounced mirror to server SQLite. Forecasts are immutable once complete; reopening a Verse shows the original analysis.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Solana: wallet + Verse attestation                                                                       | **Implemented, not verified onchain from this server.** Wallet Standard discovery (Phantom, Solflare, …), devnet. "Anchor this Verse" sends a real SPL Memo transaction containing `FORK1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | <verseId> | sha256(verse+forecast)`, signed by the user's wallet; success is shown only after confirmation, with an explorer link. A full devnet round-trip couldn't be run here: the devnet RPC faucet returns *410 (closed)* and the public RPC rate-limited simulation (429). `scripts/verify-devnet-memo.mjs` runs that check on a machine with devnet SOL. |
-| If this happens, buy (conditional markets on Solana)                                                     | **Live on devnet.** Anchor program in [`contracts/`](contracts/README.md): an integer LMSR market for _B given A=YES_, bound to exact Gemini instruments; A=NO or INVALID voids and refunds every deposit. Rules are armed from a world, watched against Gemini every 15 s, executed once by FORK's auto-trader (mock USDC) with an on-chain cost cap. Oracle reports come from FORK's service key (trusted, publicly auditable). Live Gemini settlement is still unverified. Without the service the card is hidden and the rest of the app is unaffected.                                                                                                               |
+| Graph-linked conditional trading                                                                         | **Implemented.** Build exact B given A=YES markets, deposit devnet SOL and sign trades from your wallet. The standard contract reserve checks, conditional payouts and VOID refunds apply. See [demo](docs/devnet.md).                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ---
 
@@ -321,7 +311,7 @@ measured** on real hardware.
 ## Known limitations
 
 - Solana devnet attestation is implemented but was not confirmed onchain from this server (faucet closed / RPC rate limits), and no wallet extension exists in headless tests.
-- Conditional positions currently support one exact B given A=YES pair on a local validator with mock funds. The older `docs/legacy/fork_positions` draft is retained as historical source; the active backend is `contracts`.
+- Conditional markets support one exact B given A=YES pair per market, backed by SOL. Multi-assumption worlds explicitly select one tradable condition. The older `docs/legacy/fork_positions` draft is retained as historical source; the active backend is `contracts`.
 - Live analysis takes about 1–3 minutes (research plus four parallel CLI runs). The UI shows real step-by-step progress rather than blocking. Analyses run inside the Next.js server process: a restart mid-run marks that job as lost rather than resuming it.
 - Mixed mode uses two model families, but they are still not independent forecasters (shared research digest, overlapping training data). Single-provider modes share one family entirely.
 - The demo library's baselines are illustrative. Research during testing put BTC near $65k in mid-2026, far from what the 35% demo baseline implies.

@@ -36,15 +36,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -83,15 +76,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -220,15 +206,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -352,15 +331,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -502,15 +474,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -666,6 +631,79 @@ export type ForkContracts = {
         },
         {
           "name": "mint"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "reporter",
+          "type": "pubkey"
+        },
+        {
+          "name": "pauseAuthority",
+          "type": "pubkey"
+        },
+        {
+          "name": "maxTrade",
+          "type": "u64"
+        },
+        {
+          "name": "maxDeposits",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initializeSolConfig",
+      "discriminator": [
+        170,
+        91,
+        73,
+        211,
+        167,
+        222,
+        122,
+        196
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103,
+                  45,
+                  115,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "admin"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "address": "So11111111111111111111111111111111111111112"
         },
         {
           "name": "systemProgram",
@@ -855,15 +893,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -906,15 +937,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -1042,15 +1066,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -1188,15 +1205,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -1299,15 +1309,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -1381,15 +1384,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -1437,15 +1433,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -1486,15 +1475,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -1530,15 +1512,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -1617,15 +1592,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -1711,15 +1679,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",
@@ -1852,15 +1813,8 @@ export type ForkContracts = {
           "pda": {
             "seeds": [
               {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "kind": "account",
+                "path": "config"
               },
               {
                 "kind": "account",

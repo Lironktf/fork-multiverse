@@ -16,6 +16,18 @@ pub struct Config {
     pub bump: u8,
 }
 
+impl Config {
+    /// Separate native-SOL configurations from legacy six-decimal collateral.
+    /// The immutable mint determines the seed; legacy accounts remain redeemable.
+    pub fn seed(&self) -> &'static [u8] {
+        if self.mint == anchor_spl::token::spl_token::native_mint::ID {
+            b"config-sol"
+        } else {
+            b"config"
+        }
+    }
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace, Debug)]
 pub enum Outcome {
     Unresolved,
