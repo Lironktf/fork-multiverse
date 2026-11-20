@@ -25,6 +25,8 @@ bot and auto-buy panels are removed. The Rust source is under
 `contracts/programs/fork-contracts/src`; generated public client artifacts are
 committed so frontend builds do not require the Rust toolchain.
 
+![SOL trading beside the selected graph world](demo/sol-trade.png)
+
 ## Validation
 
 - Production Next.js build, application/contract type checks, ESLint and formatting.
@@ -35,10 +37,13 @@ committed so frontend builds do not require the Rust toolchain.
 - 4 browser tests against the actual local validator: SOL deposits/buy/sell and
   all three terminal payout outcomes, one-time claims, rejected wallet signing,
   exact native vault backing and existing wrapped-SOL account preservation.
-- 13 production-browser graph, market-creation review, mobile, Atlas and journey tests.
+- 14 production-browser checks: graph, market-creation review, mobile, Atlas,
+  the forecasting journey, and real devnet account reads with no transaction sent.
 - Program static checker: no findings in modified Rust source.
 
-Devnet deployment and public account evidence are recorded separately in
+The devnet upgrade and SOL-funded Copper/Brent market are confirmed. The installed
+binary matches the local build, the vault is backed, and the deployment buffer
+was reclaimed. Public account evidence is recorded in
 `contracts/docs/devnet-deployment.json`. Live source settlement waits for actual
 Gemini results; synthetic settlement tests run only on local fixtures. The
 reporter and upgrade authority remain trusted roles. Wallet tests use a Wallet
