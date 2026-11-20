@@ -62,9 +62,11 @@ function Settings() {
                     : "All four analysts on Codex via codex exec (research uses Codex web search)."}
       </p>
       <div className="mt-1.5 flex gap-2 text-[10px] text-ink-3">
-        <span className={status.data?.claude ? "text-up/80" : ""}>● claude {status.data?.claude ? "ready" : "missing"}</span>
-        <span className={status.data?.codex ? "text-up/80" : ""}>● codex {status.data?.codex ? "ready" : "missing"}</span>
-        <span className={status.data?.grok ? "text-up/80" : ""}>● grok {status.data?.grok ? "ready" : "missing"}</span>
+        {(["claude", "codex", "grok"] as const).map((k) => (
+          <span key={k} className={status.data?.[k] ? "text-up/80" : ""}>
+            ● {k} {!status.data ? "checking" : status.data[k] ? "ready" : "missing"}
+          </span>
+        ))}
       </div>
       <div className="meta mb-2 mt-4">Motion</div>
       <div className="seg w-full" role="radiogroup" aria-label="Motion preference">
