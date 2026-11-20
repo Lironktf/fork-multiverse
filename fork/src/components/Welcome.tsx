@@ -23,7 +23,7 @@ export function Welcome({ openAtlas }: { openAtlas: () => void }) {
   const live = useLiveEvents("", true);
   const liveFeatured = useMemo(() => {
     const evs = live.data?.events ?? [];
-    return LIVE_PICKS.map((t) => evs.find((e) => e.externalMarketId === t)).filter(Boolean).slice(0, 2) as ForkEvent[];
+    return LIVE_PICKS.map((t) => evs.find((e) => e.externalMarketId === t)).filter(Boolean).slice(0, 3) as ForkEvent[];
   }, [live.data]);
   const featured = FEATURED_TARGET_IDS.map((id) => DEMO_TARGETS.find((t) => t.id === id)!);
 
@@ -93,7 +93,8 @@ export function Welcome({ openAtlas }: { openAtlas: () => void }) {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.75, duration: 0.8 }} className="pointer-events-auto mt-6 w-[min(92vw,520px)]">
             <div className="meta mb-2 px-1">Begin with</div>
             <ul className="flex flex-col">
-              {[...featured, ...liveFeatured].map((e, i) => {
+              {/* live Gemini markets first; demo examples follow (fewer once live ones load) */}
+              {[...liveFeatured, ...featured.slice(0, liveFeatured.length ? 2 : 3)].map((e, i) => {
                 const q = leadQuote(e);
                 return (
                   <motion.li key={e.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 + i * 0.06 }}>

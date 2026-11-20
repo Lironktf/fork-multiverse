@@ -95,4 +95,4 @@ The contract tests cover normal/VOID payouts, unauthorized collateral access,
 custom mint rejection, insufficient funds and locked withdrawals.
 
 The consolidated branch is `demo/graph-markets`, based on upstream `master`
-`34d5336`. The PR is prepared locally at the user's request.
+`b7f7456`. The PR is prepared locally at the user's request.

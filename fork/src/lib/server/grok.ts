@@ -30,14 +30,19 @@ const COMPAT_OFF: Record<string, string> = Object.fromEntries(
 
 let available: boolean | null = null;
 let version: string | null = null;
+// A failed check (e.g. a timeout while the server is busy) is retried after a minute
+// instead of disabling this provider until restart.
+let checkedAt = 0;
+const RECHECK_MS = 60_000;
 
 export function grokAvailable(): { available: boolean; version: string | null } {
   if (process.env.FORK_ENGINE === "demo" || process.env.FORK_GROK === "0") return { available: false, version: null };
-  if (available === null) {
+  if (available === null || (!available && Date.now() - checkedAt > RECHECK_MS)) {
+    checkedAt = Date.now();
     try {
       version = execFileSync(GROK_BIN, ["--version"], { timeout: 10_000 }).toString().trim();
       // `grok models` prints "You are logged in …" only when authenticated
-      const models = execFileSync(GROK_BIN, ["models"], { timeout: 20_000, env: { ...process.env, ...COMPAT_OFF } }).toString();
+      const models = execFileSync(GROK_BIN, ["models"], { timeout: 45_000, env: { ...process.env, ...COMPAT_OFF } }).toString();
       available = /logged in/i.test(models);
     } catch {
       available = false;
