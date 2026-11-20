@@ -78,3 +78,13 @@ test("a U.S. crypto bill surfaces presidential nomination and chamber control ma
   expect(matches.find(({ event }) => event.id === senate.id)?.type).toBe("Political");
   expect(matches.some(({ event }) => event.id === irrelevant.id)).toBe(false);
 });
+
+test("a bare 'federal' is not the Fed: federal-crime markets do not link to rate decisions", () => {
+  const crime = market("FEDCRIME", "Who will be charged with a federal crime in 2026?");
+  const fed = market("FEDDEC", "Fed decision in December?");
+  const reserve = market("FOMC", "Will the Federal Reserve cut rates?");
+  const recession = market("REC", "Recession this year?");
+  const titles = (from: typeof recession) => marketLinks(from, [crime, fed, reserve], new Set()).map((l) => l.event.title);
+  expect(titles(recession)).not.toContain(crime.title);
+  expect(titles(recession)).toEqual(expect.arrayContaining([fed.title, reserve.title]));
+});
