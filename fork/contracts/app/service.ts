@@ -667,6 +667,8 @@ async function createRule(input: unknown) {
   rules.unshift(rule);
   saveRules();
   log("auto-buy-armed", { ...rule, label: describeTrigger(rule.trigger) });
+  // check right away instead of waiting for the next 15 s tick
+  setTimeout(() => void serial(checkRules).catch(() => {}), 0);
   return rule;
 }
 /**
