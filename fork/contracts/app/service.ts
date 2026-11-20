@@ -97,10 +97,12 @@ const manifestPath = join(directory, "session.json");
 const idlHash = sha256(
   readFileSync(new URL("../target/idl/fork_contracts.json", import.meta.url)),
 );
+/** RPC URLs (e.g. Helius) carry an API key in the query string: strip it from anything we log or return. */
+const redact = (text: string) => text.replace(/api-key=[^&\s"']+/gi, "api-key=REDACTED");
 const log = (kind: string, data: unknown) =>
   appendFileSync(
     join(directory, "activity.jsonl"),
-    JSON.stringify({ at: new Date().toISOString(), kind, data }) + "\n",
+    redact(JSON.stringify({ at: new Date().toISOString(), kind, data })) + "\n",
   );
 const transact = async (
   label: string,
@@ -213,7 +215,8 @@ async function initialize() {
 function publicConfig(): AppConfig {
   return {
     cluster: CLUSTER,
-    rpc: connection.rpcEndpoint,
+    // never expose the service's RPC URL to the browser on devnet: it may carry an API key
+    rpc: local ? connection.rpcEndpoint : "https://api.devnet.solana.com",
     genesis,
     program: PROGRAM_ID.toBase58(),
     config: config.toBase58(),
@@ -767,7 +770,7 @@ async function fire(rule: AutoBuyRule, o: Observation) {
     log("auto-buy-fired", { id: rule.id, observation: o, signature });
   } catch (error) {
     rule.status = "failed";
-    rule.error = String((error as Error).message ?? error).slice(0, 400);
+    rule.error = redact(String((error as Error).message ?? error)).slice(0, 400);
     log("auto-buy-failed", { id: rule.id, observation: o, error: rule.error });
   }
   saveRules();
@@ -880,7 +883,7 @@ createServer(async (req, res) => {
     res.end(JSON.stringify({ ok: true, data }));
   } catch (error) {
     res.statusCode = res.statusCode === 404 ? 404 : 400;
-    res.end(JSON.stringify({ ok: false, error: (error as Error).message }));
+    res.end(JSON.stringify({ ok: false, error: redact((error as Error).message) }));
   }
 }).listen(Number(process.env.FORK_SERVICE_PORT ?? "8787"), "127.0.0.1", () =>
   console.log(

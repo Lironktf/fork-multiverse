@@ -14,14 +14,29 @@ and compare worlds side by side.
 
 ---
 
-## Solana conditional markets integration
+## Solana: "If this happens, buy" (devnet)
 
-The original interface is preserved. **FORK Positions** now connects to the actual
-`fork-contracts` program on a local validator, using live exact Gemini instruments
-and mock collateral. Follow [the integration workflow](docs/integration.md)
-(including IDL generation before building) and [verification report](docs/verification.md).
-The historical status and screenshots below describe the original forecasting app;
-the integration documents describe the current local conditional-trading workflow.
+The conditional-market program is **deployed on Solana devnet** at
+[`13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN`](https://explorer.solana.com/address/13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN?cluster=devnet)
+(on-chain bytes verified identical to `target/deploy/fork_contracts.so`, sha256 `30c26287…`).
+
+In any world whose target is a live Gemini market, the **If this happens, buy** card says:
+*if* one of this world's assumptions (a live Gemini outcome) *hits* N% odds on Gemini,
+*buy* shares of the target. Arming it registers the exact Gemini contracts on-chain,
+creates the market "B given A = YES" if needed (integer LMSR with a mock-USDC subsidy),
+escrows the max cost, and the FORK service watches A's Gemini odds every 15 s. When the
+line is crossed it buys once, with the max cost enforced on-chain as the trade limit.
+If A ends up not happening the market voids and every deposit is refunded. The top-bar ⚡
+lists every rule. Trades run from FORK's auto-trader account with **mock USDC**; the
+oracle (Gemini result → on-chain report) is FORK's service key. Verified on devnet
+2026-11-20: rule armed in 22 s, fired at 98.5%, trade
+[`5JqcHLWW…`](https://explorer.solana.com/tx/5JqcHLWW8LxK7EC9WFb4DzTpWWdXsxD83i8A7vNNsY23fsLS36vyjisD2E4NycXfs3LfbD5eMifZ8Ptdp4ZEa7Xp?cluster=devnet).
+
+Run the service: `fork/contracts/scripts/devnet-service.sh` (uses a Helius devnet RPC if
+`~/.config/helius/api_key` exists, otherwise public devnet; the key never reaches the
+browser, logs or error messages), then start the app with
+`FORK_LOCAL_SERVICE=http://127.0.0.1:8788`. Details: [integration](docs/integration.md),
+[verification](docs/verification.md).
 
 ## Run it
 
@@ -121,7 +136,7 @@ illustrative). Event sources are tagged **Gemini**, **Demo**, **Custom** or
 | Demo engine and demo library | **Demonstration.** 4 targets and 14 hypothetical events with authored, illustrative log-odds effects. Labelled DEMO everywhere. Live events added to a demo-engine scenario are explicitly ignored, never invented. |
 | Verse persistence | **Live:** localStorage (primary) plus a debounced mirror to server SQLite. Forecasts are immutable once complete; reopening a Verse shows the original analysis. |
 | Solana: wallet + Verse attestation | **Implemented, not verified onchain from this server.** Wallet Standard discovery (Phantom, Solflare, …), devnet. "Anchor this Verse" sends a real SPL Memo transaction containing `FORK1|<verseId>|sha256(verse+forecast)`, signed by the user's wallet; success is shown only after confirmation, with an explorer link. A full devnet round-trip couldn't be run here: the devnet RPC faucet returns *410 (closed)* and the public RPC rate-limited simulation (429). `scripts/verify-devnet-memo.mjs` runs that check on a machine with devnet SOL. |
-| FORK Positions (conditional markets on Solana) | **Integrated.** Anchor program in [`contracts/`](contracts/README.md): an integer LMSR market for *B given A=YES*, bound to exact Gemini instruments; A=NO or INVALID voids and refunds every deposit. The Positions card (inside Onchain) registers markets, funds mock collateral, quotes and trades YES/NO, and redeems. Trading needs the local oracle service (`FORK_LOCAL_SERVICE`, see [integration](docs/integration.md)); without it the card says so and the rest of the app is unaffected. Live Gemini settlement is still unverified. Evidence: [verification](docs/verification.md). |
+| If this happens, buy (conditional markets on Solana) | **Live on devnet.** Anchor program in [`contracts/`](contracts/README.md): an integer LMSR market for *B given A=YES*, bound to exact Gemini instruments; A=NO or INVALID voids and refunds every deposit. Rules are armed from a world, watched against Gemini every 15 s, executed once by FORK's auto-trader (mock USDC) with an on-chain cost cap. Oracle reports come from FORK's service key (trusted, publicly auditable). Live Gemini settlement is still unverified. Without the service the card is hidden and the rest of the app is unaffected. |
 
 ---
 
