@@ -13,6 +13,7 @@ import { baselineFor, forkDisagreement, isTerminal, requestForecast, requestNext
 import { ORIGIN_ID } from "@/lib/domain/verse";
 import { ProbabilityDisplay, RangeTrack } from "./ProbabilityDisplay";
 import { Onchain } from "@/components/solana/Onchain";
+import { IfThenBuy } from "@/components/solana/IfThenBuy";
 import { MarketContext } from "./MarketContext";
 import { OddsHistory } from "./OddsHistory";
 
@@ -449,6 +450,7 @@ export function ForecastPanel() {
               {mode === "markets" && <MarketContext />}
               <NextFork verseId={currentVerseId} />
               {f && <Sources f={f} />}
+              <IfThenBuy />
               <Onchain />
             </motion.div>
           )}

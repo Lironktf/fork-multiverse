@@ -45,3 +45,8 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 .next-prod/
+
+# Generated from fork-contracts (npm run app:sync)
+
+# Safe public configuration template
+!.env.example

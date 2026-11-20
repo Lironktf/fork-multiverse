@@ -1,0 +1,16 @@
+[
+  {
+    "ticker": "A",
+    "instrument": "GEMI-A",
+    "termsHash": "2ae3f707633c09c69e876c9f02a462c9028ddd973025dbbf9fc5d2f57c95948a",
+    "closeTs": 1800000100,
+    "observationTs": 1800000110
+  },
+  {
+    "ticker": "B",
+    "instrument": "GEMI-B",
+    "termsHash": "5648e772fa90c4fcbf1c29558aefb6f177a82bdd287ee71e204a33ceb6f098b4",
+    "closeTs": 1800000200,
+    "observationTs": 1800000210
+  }
+]

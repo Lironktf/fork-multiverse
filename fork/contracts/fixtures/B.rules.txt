@@ -1,0 +1,1 @@
+Deterministic demo B rules. YES or NO according to registered observation.

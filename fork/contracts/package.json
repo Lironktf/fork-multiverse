@@ -1,0 +1,45 @@
+{
+  "name": "fork-conditional-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "build": "NO_DNA=1 anchor build",
+    "test:chain": "cargo test -- --nocapture",
+    "verify": "bash scripts/verify.sh",
+    "demo": "tsx demo/live.ts",
+    "oracle": "tsx scripts/relay.ts",
+    "simulate": "tsx scripts/simulate.ts",
+    "bot": "tsx scripts/bot.ts",
+    "demo:fixture": "tsx scripts/demo.ts",
+    "demo:live": "tsx demo/live.ts",
+    "validator:live": "bash scripts/live-validator.sh",
+    "format": "prettier --write \"{app,client,demo,oracle,research,scripts,tests}/**/*.ts\" \"*.json\" && cargo fmt --all",
+    "format:check": "prettier --check \"{app,client,demo,oracle,research,scripts,tests}/**/*.ts\" \"*.json\" && cargo fmt --all -- --check",
+    "demo:audit": "tsx demo/audit.ts",
+    "app:serve": "tsx app/service.ts",
+    "app:sync": "tsx scripts/sync-app.ts",
+    "app:validator": "bash scripts/app-validator.sh"
+  },
+  "dependencies": {
+    "@anchor-lang/core": "1.1.2",
+    "@solana/spl-token": "0.4.14",
+    "@solana/web3.js": "1.98.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.1",
+    "prettier": "3.6.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "toml": "5.0.1",
+    "jayson": "5.0.0",
+    "uuid": "11.1.1"
+  }
+}
