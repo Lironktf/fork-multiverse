@@ -27,7 +27,9 @@ function topics(event: ForkEvent): Set<string> {
 function topicWords(label: string): Set<string> {
   const text = label.toLowerCase()
     .replace(/\bs\s*&\s*p(?:\s*500)?\b/g, " sp500 ")
-    .replace(/\bnasdaq[- ]?100\b/g, " nasdaq100 ");
+    .replace(/\bnasdaq[- ]?100\b/g, " nasdaq100 ")
+    // "Federal Reserve" is the Fed; a bare "federal" (federal crime, federal shutdown) is not
+    .replace(/\bfederal reserve\b/g, " fed ");
   const words = text.match(/[\p{L}][\p{L}\p{N}]{2,}|\bai\b/gu) ?? [];
   const terms = new Set(words.filter((word) => !common.has(word)).map((word) => {
     if (word === "sp500") return "S&P 500";
@@ -36,7 +38,7 @@ function topicWords(label: string): Set<string> {
     if (["btc", "bitcoin"].includes(word)) return "bitcoin";
     if (["eth", "ethereum"].includes(word)) return "ethereum";
     if (["rates", "rate"].includes(word)) return "rate";
-    if (["federal", "fed", "fomc"].includes(word)) return "fed";
+    if (["fed", "fomc"].includes(word)) return "fed";
     return word;
   }));
   if (/\b(?:interest rates?|rate (?:cut|hike)s?|monetary policy)\b/.test(text)) terms.add("monetary policy");
