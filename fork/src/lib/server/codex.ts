@@ -22,10 +22,15 @@ const MAX_CONCURRENCY = Number(process.env.FORK_CODEX_CONCURRENCY ?? 4);
 
 let available: boolean | null = null;
 let version: string | null = null;
+// A failed check (e.g. a timeout while the server is busy) is retried after a minute
+// instead of disabling this provider until restart.
+let checkedAt = 0;
+const RECHECK_MS = 60_000;
 
 export function codexAvailable(): { available: boolean; version: string | null } {
   if (process.env.FORK_ENGINE === "demo" || process.env.FORK_CODEX === "0") return { available: false, version: null };
-  if (available === null) {
+  if (available === null || (!available && Date.now() - checkedAt > RECHECK_MS)) {
+    checkedAt = Date.now();
     try {
       version = execFileSync(CODEX_BIN, ["--version"], { timeout: 10_000 }).toString().trim();
       // logged in? `codex login status` exits non-zero when not authenticated
