@@ -7,7 +7,6 @@ import { useUniverse, forecastFor } from "@/store/universe";
 import { useUI } from "@/store/ui";
 import { buildMemoTx, confirm, verseFingerprint } from "@/lib/client/attest";
 import { SOLANA_CLUSTER, explorerTx } from "./SolanaProvider";
-import { Positions } from "./Positions";
 import { short } from "./WalletButton";
 import { ORIGIN_ID } from "@/lib/domain/verse";
 
@@ -16,7 +15,8 @@ import { ORIGIN_ID } from "@/lib/domain/verse";
  *  - Verse attestation: a REAL devnet transaction (SPL Memo) signed by the
  *    user's wallet, anchoring the Verse fingerprint. Status shown only after
  *    confirmation; signature links to Solana Explorer.
- *  - FORK Positions: the real conditional market in contracts, opened on demand.
+ *  The manual Positions trading card is intentionally not mounted; trading is
+ *  offered through IfThenBuy (one-step "if A happens, buy B").
  */
 const NONE: never[] = [];
 
@@ -33,7 +33,8 @@ export function Onchain() {
     })),
   );
   const [state, setState] = useState<"idle" | "signing" | "confirming">("idle");
-  if (verse.id === ORIGIN_ID) return <Positions />;
+  // the Origin world has no assumptions to anchor
+  if (verse.id === ORIGIN_ID) return null;
   const f = forecastFor({ forecasts, forecastIndex }, verse.id, target);
 
   const attest = async () => {
@@ -127,7 +128,6 @@ export function Onchain() {
           </span>
         </a>
       ))}
-      <Positions />
     </div>
   );
 }

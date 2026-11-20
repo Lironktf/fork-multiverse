@@ -9,6 +9,7 @@ import { engine } from "@/lib/client/runtime";
 import { focusCurrent, navigateTo, requestNextForks } from "@/lib/client/actions";
 import { ORIGIN_ID } from "@/lib/domain/verse";
 import { SavedVerses } from "@/components/verse/SavedVerses";
+import { OpenRules } from "@/components/solana/OpenRules";
 import { WalletButton } from "@/components/solana/WalletButton";
 import { useQuery } from "@tanstack/react-query";
 
@@ -125,6 +126,7 @@ export function TopRight() {
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
+      <OpenRules />
       <span className="mx-0.5 h-4 w-px bg-line" />
       <WalletButton />
       <AnimatePresence>
