@@ -77,6 +77,20 @@ actual source outcomes; synthetic test reports are isolated from live markets.
 - [`math.rs`](../contracts/programs/fork-contracts/src/math.rs): integer pricing and fees.
 - [`market.rs`](../contracts/programs/fork-contracts/tests/market.rs): legacy and SOL backing/security tests.
 
+## Verified devnet deployment
+
+The SOL program upgrade and Copper/Brent market are confirmed on devnet.
+The installed binary matches SHA-256
+`507ee8c5d4cf511ec4963606538757d4c98cf26a9cdbbcb94f58be53c8181f13`.
+The market is open with 99,999,999 lamports of LP funding (the integer reserve
+required for a 0.1 SOL budget). Vault SOL equals that funding plus account rent.
+Total operator spend was 0.205939799 devnet SOL, within the approved 0.35 SOL;
+the deployment buffer was closed and its temporary balance recovered.
+
+See [public deployment evidence](../contracts/docs/devnet-deployment.json) and
+[local SOL payout evidence](../contracts/docs/native-sol-verification.json).
+The production demo currently runs at <http://localhost:3100>.
+
 ## Verification
 
 ```bash

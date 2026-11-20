@@ -62,7 +62,8 @@ test("3–18 · basket, fork, name, branch, navigate, reload, inspect, compare, 
   await addByClick(page, "Major new crypto ETF");
   await expect(page.locator('[data-testid="basket-item"]')).toHaveCount(2);
 
-  // 4 · drag from discovery into the basket
+  // 4 · drag an authored demo event; live search results must not move its row mid-drag.
+  await page.getByTestId("discovery").getByRole("tab", { name: /^library$/i }).click();
   await page.fill('[data-testid="discovery-search"]', "United States enters recession");
   const row = page.locator('[data-testid="discovery"] [data-event="demo-us-recession"]');
   // live Gemini results load asynchronously above the library row; wait until it stops moving

@@ -2,6 +2,14 @@
 
 The current demo uses native SOL collateral and graph-linked wallet trading.
 See [the current walkthrough](devnet.md) and [PR review notes](pr-review.md).
+Current checks pass: 25 frontend unit tests, 25 contract TypeScript tests,
+23 Rust tests, four real local-validator browser transaction tests, and 14
+production-browser checks including a real devnet read. The
+production build, type checks, lint and formatting pass. The devnet program
+matches the compiled SOL binary; the new market's recorded liquidity is backed
+by its native vault balance. See [deployment evidence](../contracts/docs/devnet-deployment.json)
+and [local payout evidence](../contracts/docs/native-sol-verification.json).
+
 The November 19 evidence below is historical: its mock collateral, older UI,
 addresses and test totals do not describe the current demo.
 
