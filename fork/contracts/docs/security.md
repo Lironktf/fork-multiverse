@@ -91,7 +91,8 @@ micro-USDC at maximum b. Flooring the final potential adds <1 micro-USDC;
 two potential evaluations give a conservative <2.002 micro-USDC cost error.
 A four micro-USDC buy surcharge / up-to-four sell haircut keeps trade rounding
 on the reserve side. No minimum sale payment is invented when it rounds to
-zero. Protocol percentage fees are zero. These rounding reserves are cancelled
+zero. Percentage LP fees are fixed per market, capped at 10%, and embedded in
+conditional cash. Fees and rounding reserves are cancelled
 and refunded with all conditional P&L on VOID/INVALID.
 
 A common potential makes multi-step cycles telescope. A buy and exact inverse
@@ -104,7 +105,7 @@ proof or an arbitrary-precision certificate. See test-report.md for results.
 
 - This is a demo, without independent audit, formal verification or production
   incident procedures. Single-reporter and loader upgrade trust remain.
-- No live LP additions, b changes, share transfers, shorting, margin, fees,
+- No live LP additions, b changes, share transfers, shorting, margin,
   partial withdrawals, full account closure or dust recovery.
 - Global config pause has a shared account-read dependency; each market has a
   single writable ledger/vault. Throughput is not production-benchmarked.
@@ -119,3 +120,6 @@ proof or an arbitrary-precision certificate. See test-report.md for results.
 - Devnet deployment is supplied as an explicit script and has not been executed.
   All automated settlement evidence uses deterministic fixtures, not a live
   authenticated Gemini-to-devnet oracle run.
+
+See [LP fees, funding and migration invariants](liquidity.md) for the appended
+market fields, permissionless zero-fee migration, and budget-sized initial depth.

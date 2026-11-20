@@ -1,5 +1,5 @@
 import { type Estimate } from "./model.js";
-import { price, quote, type Pool } from "./lmsr.js";
+import { price, quote, tradeFee, type Pool } from "./lmsr.js";
 export interface Inventory {
   cash: bigint;
   yes: bigint;
@@ -30,6 +30,7 @@ export interface Proposal {
   buy: boolean;
   amount: bigint;
   quote: bigint;
+  feeBps: number;
   limit: bigint;
   expectedProfitMicro: number;
   worstModelProfitMicro: number;
@@ -67,7 +68,7 @@ export function propose(
     risk.slippageBps < 0 ||
     risk.slippageBps > 1000 ||
     risk.feeBps < 0 ||
-    risk.feeBps > 10_000 ||
+    risk.feeBps > 1000 ||
     risk.networkCostMicro < 0n
   )
     throw new Error("Invalid strategy risk limits");
@@ -83,25 +84,26 @@ export function propose(
         if (!buy && amount > held) continue;
         if (buy && inventory.yes + inventory.no + amount > risk.maxExposure)
           continue;
-        const cost = quote(pool, yes, buy, amount),
+        const gross = quote(pool, yes, buy, amount),
+          fee = tradeFee(gross, risk.feeBps),
+          cost = buy ? gross + fee : gross - fee,
           slip = (cost * BigInt(risk.slippageBps) + 9999n) / 10000n;
-        const limit = buy ? cost + slip : cost > slip ? cost - slip : 0n,
-          fee = (cost * BigInt(risk.feeBps) + 9999n) / 10000n;
-        if (buy && inventory.cash < limit + fee + risk.minCash) continue;
+        const limit = buy ? cost + slip : cost > slip ? cost - slip : 0n;
+        if (buy && inventory.cash < limit + risk.minCash) continue;
         const fair = yes ? model.probability : 1 - model.probability,
           low = yes ? model.lower : 1 - model.upper,
           high = yes ? model.upper : 1 - model.lower;
         const expected =
           activation *
             (buy
-              ? Number(amount) * fair - Number(cost + fee)
-              : Number(cost - fee) - Number(amount) * fair) -
+              ? Number(amount) * fair - Number(cost)
+              : Number(cost) - Number(amount) * fair) -
           Number(risk.networkCostMicro);
         const conservative =
           activation *
             (buy
-              ? Number(amount) * low - Number(limit + fee)
-              : Number(limit - fee) - Number(amount) * high) -
+              ? Number(amount) * low - Number(limit)
+              : Number(limit) - Number(amount) * high) -
           Number(risk.networkCostMicro);
         if (conservative <= Number(amount) * risk.minEdge || conservative <= 0)
           continue;
@@ -110,6 +112,7 @@ export function propose(
           buy,
           amount,
           quote: cost,
+          feeBps: risk.feeBps,
           limit,
           expectedProfitMicro: expected,
           worstModelProfitMicro: conservative,
@@ -121,7 +124,9 @@ export function propose(
   return best;
 }
 export function paperFill(pool: Pool, inventory: Inventory, p: Proposal) {
-  const actual = quote(pool, p.yes, p.buy, p.amount);
+  const gross = quote(pool, p.yes, p.buy, p.amount);
+  const fee = tradeFee(gross, p.feeBps);
+  const actual = p.buy ? gross + fee : gross - fee;
   if (p.buy ? actual > p.limit : actual < p.limit)
     throw new Error("Paper slippage rejection");
   const held = p.yes ? inventory.yes : inventory.no;

@@ -250,6 +250,7 @@ function Trading({
   );
   const [state, setState] = useState<ChainState | null>(null);
   const [amount, setAmount] = useState("100");
+  const [lpAmount, setLpAmount] = useState("40");
   const [quantity, setQuantity] = useState("10");
   const [yes, setYes] = useState(true);
   const [buy, setBuy] = useState(true);
@@ -396,6 +397,106 @@ function Trading({
                   ? "VOID: redeem your original deposit; conditional gains do not pay out."
                   : "Final settlement: conditional cash plus winning shares can be redeemed."}
           </p>
+          <details
+            className="mt-3 text-[10px] text-ink-3"
+            data-testid="liquidity"
+          >
+            <summary className="cursor-pointer">
+              Liquidity providers · fee {(state.market.feeBps / 100).toFixed(2)}
+              %
+            </summary>
+            <dl className="mt-2 grid grid-cols-2 gap-1">
+              {[
+                ["Market funding", state.market.lpDeposits],
+                ["Required funding", state.liquidity.required],
+                ["Funding shortfall", state.liquidity.shortfall],
+                ["LMSR depth (b)", state.market.b],
+                ["Your contribution", state.liquidity.contribution],
+                ["Your allocated fees", state.liquidity.conditionalFees],
+                ["Equity if B=YES", state.liquidity.yesEquity],
+                ["Equity if B=NO", state.liquidity.noEquity],
+                ["Maximum capital at risk", state.liquidity.maxLoss],
+                ["LP withdrawable", state.liquidity.withdrawable],
+                ["LP already paid", state.liquidity.paid],
+              ].map(([label, value]) => (
+                <div className="contents" key={String(label)}>
+                  <dt>{String(label)}</dt>
+                  <dd
+                    className="num text-right"
+                    data-testid={`lp-${String(label)}`}
+                  >
+                    {formatUnits(value as bigint)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-2">
+              Your share: {(state.liquidity.ownershipBps / 100).toFixed(2)}%.
+              Fees are included in LP equity and cancel on VOID. Outcome
+              estimates use current holdings. Trading losses can exceed fees;
+              profitability is not guaranteed.
+            </p>
+            <p className="mt-1">
+              {state.lp?.claimed
+                ? "LP claim paid."
+                : state.liquidity.canWithdraw
+                  ? "Withdraw your contribution during Funding, or claim final equity after settlement."
+                  : "LP capital and fees stay locked until final settlement. No new LP shares after trading starts."}
+            </p>
+            {!state.market.started && !state.liquidity.terminal && (
+              <input
+                aria-label="LP amount"
+                className={`${field} mt-2`}
+                value={lpAmount}
+                onChange={(e) => setLpAmount(e.target.value)}
+                inputMode="decimal"
+              />
+            )}
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                className={button}
+                disabled={busy || closed || !state.liquidity.canFund}
+                onClick={() =>
+                  void run(() =>
+                    client.liquidity("fund", lpAmount, signer, setMessage),
+                  )
+                }
+              >
+                Fund liquidity
+              </button>
+              <button
+                className={button}
+                disabled={busy || !state.liquidity.canWithdraw}
+                onClick={() =>
+                  void run(() =>
+                    client.liquidity("withdraw", lpAmount, signer, setMessage),
+                  )
+                }
+              >
+                {state.liquidity.terminal
+                  ? "Claim LP equity"
+                  : "Withdraw LP funding"}
+              </button>
+              {!state.market.started && (
+                <button
+                  className={button}
+                  disabled={
+                    busy ||
+                    closed ||
+                    !state.liquidity.canFund ||
+                    state.liquidity.shortfall > 0n
+                  }
+                  onClick={() =>
+                    void run(() =>
+                      client.liquidity("start", "0", signer, setMessage),
+                    )
+                  }
+                >
+                  Start funded market
+                </button>
+              )}
+            </div>
+          </details>
           <details className="mt-2 text-[10px] text-ink-3">
             <summary className="cursor-pointer">
               Confirmed chain details
@@ -538,6 +639,10 @@ function Trading({
             {quote.buy ? "Cost" : "Conditional proceeds"}:{" "}
             {formatUnits(BigInt(quote.cost))} mock USDC
           </div>
+          <div className="mt-1 text-ink-3">
+            Includes LP fee: {formatUnits(BigInt(quote.fee))} mock USDC.
+            Refunded on VOID.
+          </div>
           {quote.probability !== null && (
             <div className="mt-1 text-ink-2">
               Solana LMSR YES: {(quote.probability * 100).toFixed(4)}%
@@ -617,6 +722,7 @@ function PositionsContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
+  const [communityFunding, setCommunityFunding] = useState(false);
   const connect = useCallback(async () => {
     setBusy(true);
     setError("");
@@ -650,7 +756,11 @@ function PositionsContent() {
     setBusy(true);
     setError("");
     try {
-      const result = await api<MarketDescriptor>("markets", { parent, target });
+      const result = await api<MarketDescriptor>("markets", {
+        parent,
+        target,
+        communityFunding,
+      });
       selectMarket(result);
       setMarkets(await api<MarketDescriptor[]>("markets"));
       setCreating(false);
@@ -727,6 +837,14 @@ function PositionsContent() {
                 selected={target}
                 onSelect={setTarget}
               />
+              <label className="mt-3 flex items-center gap-2 text-[10px] text-ink-3">
+                <input
+                  type="checkbox"
+                  checked={communityFunding}
+                  onChange={(e) => setCommunityFunding(e.target.checked)}
+                />
+                Let wallets fund this market before trading
+              </label>
               <button
                 className={`${button} mt-3`}
                 disabled={
@@ -741,8 +859,9 @@ function PositionsContent() {
                 {busy ? "Preparing on Solana…" : "Create or connect market"}
               </button>
               <p className="mt-2 text-[10px] text-ink-3">
-                New markets start at 50% with a fixed local subsidy. This is a
-                neutral initialization, not P(B|A) inferred from Gemini prices.
+                New markets start at 50% with depth sized for an 80 mock USDC
+                funding budget. This is a neutral initialization, not P(B|A)
+                inferred from Gemini prices.
               </p>
             </fieldset>
           ) : (

@@ -20,6 +20,7 @@ import build from "./generated/build.json";
 import type { ForkContracts } from "./generated/fork_contracts";
 import type { AppConfig, MarketDescriptor } from "./generated/app-types";
 import { claimable, executionLimit, parseUnits } from "./amounts";
+import { liquidityMetrics } from "./liquidity";
 
 export type Accounts = IdlAccounts<ForkContracts>;
 export const PROGRAM_ID = new PublicKey(idl.address);
@@ -79,6 +80,7 @@ export function marketClient(
   const mint = new PublicKey(config.mint),
     vault = new PublicKey(market.vault);
   const userToken = getAssociatedTokenAddressSync(mint, owner);
+  const lpAddress = pda("lp", accounts.market, owner);
   const funds = {
     ...accounts,
     mint,
@@ -109,6 +111,7 @@ export function marketClient(
       accounts.trader,
       userToken,
       vault,
+      lpAddress,
     ];
     const response = await connection.getMultipleAccountsInfoAndContext(keys, {
       commitment: "confirmed",
@@ -130,6 +133,9 @@ export function marketClient(
       a = decode("externalEvent", 2),
       b = decode("externalEvent", 3);
     const trader = response.value[4] ? decode("trader", 4) : null;
+    const lp = response.value[7] ? decode("lp", 7) : null;
+    if (lp && (!lp.owner.equals(owner) || !lp.market.equals(accounts.market)))
+      throw new Error("LP account does not belong to this wallet/market.");
     if (
       !m.config.equals(accounts.config) ||
       !m.parent.equals(accounts.parent) ||
@@ -194,6 +200,8 @@ export function marketClient(
       parent: a,
       target: b,
       trader,
+      lp,
+      liquidity: liquidityMetrics(m, lp, status),
       status,
       fingerprint,
       walletCollateral: walletToken?.amount ?? BigInt(0),
@@ -317,11 +325,14 @@ export function marketClient(
     if (buy && cost > BigInt(before.trader.cash.toString()))
       throw new Error("Insufficient conditional cash for this trade.");
     let probability: number | null = null;
+    let fee = "0";
     for (const event of new EventParser(PROGRAM_ID, program.coder).parseLogs(
       result.value.logs ?? [],
     )) {
-      if (event.name === "quoteEvent")
+      if (event.name === "quoteEvent") {
         probability = Number(event.data.yesPriceE18.toString()) / 1e18;
+        fee = event.data.fee.toString();
+      }
     }
     if ((await read()).fingerprint !== before.fingerprint)
       throw new Error("Market changed during quote. Request a fresh quote.");
@@ -330,6 +341,7 @@ export function marketClient(
       buy,
       amount: amount.toString(),
       cost: cost.toString(),
+      fee,
       probability,
       at: Date.now(),
       fingerprint: before.fingerprint,
@@ -394,7 +406,78 @@ export function marketClient(
       progress,
     );
   }
-  return { read, network, deposit, quote, trade, redeem };
+  async function liquidity(
+    action: "fund" | "withdraw" | "start",
+    value: string,
+    sign: (tx: Transaction) => Promise<Transaction>,
+    progress: (message: string) => void,
+  ) {
+    const state = await read();
+    const instructions: TransactionInstruction[] = [];
+    const lpFunds = {
+      owner,
+      config: accounts.config,
+      market: accounts.market,
+      parent: accounts.parent,
+      target: accounts.target,
+      lp: lpAddress,
+      mint,
+      vault,
+      userToken,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    };
+    if (action === "fund") {
+      const amount = parseUnits(value);
+      if (!state.liquidity.canFund)
+        throw new Error("Funding closes when trading starts.");
+      if (amount > state.walletCollateral)
+        throw new Error("Insufficient mock collateral.");
+      if (!state.lp)
+        instructions.push(
+          await program.methods
+            .openLp()
+            .accountsStrict({
+              owner,
+              market: accounts.market,
+              lp: lpAddress,
+              systemProgram: SystemProgram.programId,
+            })
+            .instruction(),
+        );
+      instructions.push(
+        await program.methods
+          .fundLp(new BN(amount.toString()))
+          .accountsStrict(lpFunds)
+          .instruction(),
+      );
+    } else if (action === "withdraw") {
+      if (!state.liquidity.canWithdraw)
+        throw new Error("LP capital is locked until terminal settlement.");
+      const amount = state.liquidity.terminal
+        ? state.liquidity.withdrawable
+        : parseUnits(value);
+      instructions.push(
+        await program.methods
+          .withdrawLp(new BN(amount.toString()))
+          .accountsStrict(lpFunds)
+          .instruction(),
+      );
+    } else {
+      instructions.push(
+        await program.methods
+          .startMarket()
+          .accountsStrict({
+            config: accounts.config,
+            market: accounts.market,
+            parent: accounts.parent,
+            target: accounts.target,
+          })
+          .instruction(),
+      );
+    }
+    return send(instructions, sign, progress);
+  }
+  return { read, network, deposit, quote, trade, redeem, liquidity };
 }
 export type MarketClient = ReturnType<typeof marketClient>;
 export type ChainState = Awaited<ReturnType<MarketClient["read"]>>;

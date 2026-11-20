@@ -137,8 +137,8 @@ interests are **nontransferable program accounts**, not bearer tokens.
 Configurations are namespaced by their creator; clients must pin their chosen
 config. The program's loader upgrade authority is separate from config admin.
 Admin transfer requires proposal and acceptance. Reporter and pause authority
-are explicit roles; oracle quorum is **one trusted reporter**. Fees are fixed
-at zero; no admin instruction can change market conditions or drain escrow.
+are explicit roles; oracle quorum is **one trusted reporter**. New markets snapshot a configurable LP fee (0–10%); no admin instruction can
+change an existing market’s fee or drain escrow. See [LP economics and migration](docs/liquidity.md).
 
 For trader i:
 
@@ -185,7 +185,7 @@ trade  = F(after) - F(before)
 Initial log odds configure probability; zero gives 50%. Stable range reduction
 and bounded integer series use a 10^18 scale and checked u128 intermediates.
 Final amounts are micro-USDC. Buys add four micro-USDC and sells subtract up
-to four as a conservative rounding reserve; percentage fees remain zero.
+to four as a conservative rounding reserve; the snapshotted LP fee is then applied to the collateral flow.
 Quotes return the same integer amounts that trades use. Maximum input ranges,
 error bounds and compute measurements are documented in the linked reports.
 
@@ -193,7 +193,8 @@ One virtual offset is zero. Required initial subsidy is floor(F(0,0))+4,
 which is b\*ln(2) plus rounding only for a balanced initialization. Off-center
 initialization requires a larger worst-case reserve. An LP can lose almost all
 of this subsidy when traders win; all trader entitlements remain covered.
-LPs receive residual equity proportionally to their deposited capital.
+LPs receive residual equity, including conditional fees on valid settlement,
+proportionally to their deposited capital. Fees cancel on VOID and do not guarantee profit.
 
 Multiple LPs may fund or withdraw during Funding. Once started, **LP ownership,
 b and reserves are locked until terminal settlement**. Live LP additions and
@@ -267,6 +268,10 @@ signature**, not the authenticity of Gemini HTTPS. Reporter compromise can
 misresolve markets; reporter failure can lock funds indefinitely.
 
 ## Local validator and devnet
+
+The expanded deployment/RPC suite is `npm run test:validator`: five markets,
+multiple LPs and traders, actual SPL transfers, fees, exits, valid settlements and
+VOID refunds. See [the reproducible workflow and migration](docs/liquidity.md).
 
 LiteSVM requires no validator. For a separate validator smoke demo, terminal 1:
 

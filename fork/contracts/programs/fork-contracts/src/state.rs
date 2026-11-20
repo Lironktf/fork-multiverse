@@ -83,6 +83,10 @@ pub struct Market {
     pub started: bool,
     pub status: Status,
     pub bump: u8,
+    // Append only. migrate_market extends V1 accounts with zero-fee terms.
+    pub fee_bps: u16,
+    /// Conditional fees: embedded in LP residual on valid settlement; canceled on VOID.
+    pub fees_accrued: u64,
 }
 impl Market {
     pub fn required_subsidy(&self) -> Result<u64> {
@@ -205,6 +209,7 @@ pub struct TradeEvent {
     pub amount: u64,
     pub cash_flow: u64,
     pub conditional_cash: u64,
+    pub fee: u64,
 }
 
 #[event]
@@ -237,4 +242,5 @@ pub struct QuoteEvent {
     pub amount: u64,
     pub cost: u64,
     pub yes_price_e18: u64,
+    pub fee: u64,
 }

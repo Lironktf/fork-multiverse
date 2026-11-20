@@ -22,6 +22,7 @@ import {
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { makeClient, pda, BN, PROGRAM_ID } from "../client/anchor.js";
+import { requiredSubsidy } from "../research/lmsr.js";
 import { catalogPage } from "../demo/catalog.js";
 import {
   bindingHash,
@@ -183,6 +184,17 @@ async function initialize() {
       );
     save();
   }
+  const feeBps = Number(process.env.FORK_FEE_BPS ?? "100");
+  if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 1000)
+    throw new Error("FORK_FEE_BPS must be 0..1000");
+  if ((await program.account.config.fetch(config)).feeBps !== feeBps)
+    await transact(
+      "set fee for future markets",
+      await program.methods
+        .setFee(feeBps)
+        .accountsStrict({ authority: admin.publicKey, config })
+        .instruction(),
+    );
 }
 function publicConfig(): AppConfig {
   return {
@@ -285,7 +297,11 @@ async function binding(input: unknown): Promise<MarketBinding> {
   log("source-selection", { ...item, closeTs });
   return result;
 }
-async function prepare(body: { parent: unknown; target: unknown }) {
+async function prepare(body: {
+  parent: unknown;
+  target: unknown;
+  communityFunding?: boolean;
+}) {
   const a = await binding(body.parent),
     b = await binding(body.target);
   if (a.instrument === b.instrument)
@@ -331,7 +347,7 @@ async function prepare(body: { parent: unknown; target: unknown }) {
     await transact(
       "create conditional market",
       await program.methods
-        .createMarket(units(100), new BN(0))
+        .createMarketForBudget(units(80), new BN(0))
         .accountsStrict({
           admin: admin.publicKey,
           config,
@@ -346,66 +362,74 @@ async function prepare(body: { parent: unknown; target: unknown }) {
         .instruction(),
     );
   }
-  const lp = pda("lp", market, admin.publicKey);
-  const userToken = (
-    await getOrCreateAssociatedTokenAccount(
-      connection,
-      admin,
-      mint,
-      admin.publicKey,
-    )
-  ).address;
-  if (!(await program.account.lp.fetchNullable(lp)))
-    await transact(
-      "open LP",
-      await program.methods
-        .openLp()
-        .accountsStrict({
-          owner: admin.publicKey,
-          market,
-          lp,
-          systemProgram: SystemProgram.programId,
-        })
-        .instruction(),
-    );
-  const state = await program.account.market.fetch(market);
-  if (!state.started) {
-    const needed = units(80).sub(state.lpDeposits);
-    if (needed.gt(new BN(0))) {
-      await mintTo(
+  if (!body.communityFunding) {
+    const lp = pda("lp", market, admin.publicKey);
+    const userToken = (
+      await getOrCreateAssociatedTokenAccount(
         connection,
         admin,
         mint,
-        userToken,
-        admin,
-        BigInt(needed.toString()),
-      );
+        admin.publicKey,
+      )
+    ).address;
+    if (!(await program.account.lp.fetchNullable(lp)))
       await transact(
-        "fund mock LP subsidy",
+        "open LP",
         await program.methods
-          .fundLp(needed)
+          .openLp()
           .accountsStrict({
             owner: admin.publicKey,
-            config,
             market,
-            parent,
-            target,
             lp,
-            mint,
-            vault,
-            userToken,
-            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
           })
           .instruction(),
       );
+    const state = await program.account.market.fetch(market);
+    if (!state.started) {
+      const needed = new BN(
+        requiredSubsidy({
+          b: BigInt(state.b.toString()),
+          offsetYes: BigInt(state.offsetYes.toString()),
+          offsetNo: BigInt(state.offsetNo.toString()),
+        }).toString(),
+      ).sub(state.lpDeposits);
+      if (needed.gt(new BN(0))) {
+        await mintTo(
+          connection,
+          admin,
+          mint,
+          userToken,
+          admin,
+          BigInt(needed.toString()),
+        );
+        await transact(
+          "fund mock LP subsidy",
+          await program.methods
+            .fundLp(needed)
+            .accountsStrict({
+              owner: admin.publicKey,
+              config,
+              market,
+              parent,
+              target,
+              lp,
+              mint,
+              vault,
+              userToken,
+              tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .instruction(),
+        );
+      }
+      await transact(
+        "start market",
+        await program.methods
+          .startMarket()
+          .accountsStrict({ config, market, parent, target })
+          .instruction(),
+      );
     }
-    await transact(
-      "start market",
-      await program.methods
-        .startMarket()
-        .accountsStrict({ config, market, parent, target })
-        .instruction(),
-    );
   }
   const result: MarketDescriptor = {
     address: market.toBase58(),

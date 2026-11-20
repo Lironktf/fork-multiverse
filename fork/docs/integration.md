@@ -87,7 +87,10 @@ at the bottom of the existing Forecast panel. Search exact parent A and target B
 instruments, read their rules and resolution criteria, enter a conservative UTC
 trading close for each and acknowledge the rules. **Create or connect market**
 registers immutable bindings and starts a local LMSR with b=100, initial log odds
-zero and 80 mock USDC LP subsidy. No Gemini orders are ever submitted.
+zero and an 80 mock USDC funding budget. Depth is sized to that budget, with
+a default 1% LP fee for new markets (`FORK_FEE_BPS`). An optional community
+Funding phase allows connected wallets to fund, withdraw before start and claim
+terminal LP equity. See [accounting and migration](../contracts/docs/liquidity.md). No Gemini orders are ever submitted.
 
 Connect a Wallet Standard Solana wallet through the existing top-right button.
 The wallet must support local transactions with the configured RPC. Use **Get

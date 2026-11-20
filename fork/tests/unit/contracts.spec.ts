@@ -31,3 +31,38 @@ test("profitable early exit remains locked and VOID returns principal only", () 
   );
   expect(claimable("void", { ...trader, claimed: true })).toBe(BigInt(0));
 });
+
+test("LP metrics distinguish conditional fee income, losses, VOID and paid claims", async () => {
+  const { liquidityMetrics } = await import(
+    "../../src/lib/contracts/liquidity"
+  );
+  const n = BigInt;
+  const market = {
+    b: n(100_000_000),
+    offsetYes: n(0),
+    offsetNo: n(0),
+    lpDeposits: n(80_000_000),
+    principal: n(100_000_000),
+    cash: n(40_000_000),
+    yes: n(100_000_000),
+    no: n(0),
+    lpPool: n(40_000_000),
+    feesAccrued: n(1_000_000),
+    started: true,
+  };
+  const lp = { deposited: n(20_000_000), paid: n(0), claimed: false };
+  const pending = liquidityMetrics(market, lp, "pending");
+  expect(pending.conditionalFees).toBe(n(250_000));
+  expect(pending.yesEquity).toBe(n(10_000_000));
+  expect(pending.canWithdraw).toBe(false);
+  expect(pending.withdrawable).toBe(n(0));
+  expect(liquidityMetrics(market, lp, "settledYes").withdrawable).toBe(
+    n(10_000_000),
+  );
+  const voided = liquidityMetrics(market, lp, "void");
+  expect(voided.withdrawable).toBe(n(20_000_000));
+  expect(voided.conditionalFees).toBe(n(0));
+  expect(
+    liquidityMetrics(market, { ...lp, claimed: true }, "void").canWithdraw,
+  ).toBe(false);
+});

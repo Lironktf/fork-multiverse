@@ -9,6 +9,9 @@ skip-lint = false
 [programs.localnet]
 fork_contracts = "2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv"
 
+[programs.devnet]
+fork_contracts = "2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv"
+
 [provider]
 cluster = "localnet"
 wallet = "~/.config/solana/id.json"

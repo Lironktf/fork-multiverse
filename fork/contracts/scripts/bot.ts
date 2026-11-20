@@ -81,7 +81,7 @@ const proposal = propose(
       BigInt(config.maxTrade.toString()) < risk.maxTrade
         ? BigInt(config.maxTrade.toString())
         : risk.maxTrade,
-    feeBps: config.feeBps,
+    feeBps: m.feeBps,
   },
   gate,
 );

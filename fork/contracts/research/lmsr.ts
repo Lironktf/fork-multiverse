@@ -66,3 +66,33 @@ export function price(pool: Pool): number {
     hi = (S * S) / (S + e);
   return Number(y >= n ? hi : S - hi) / Number(S);
 }
+
+/** Fee is part of conditional cash; it earns nothing on VOID. */
+export function tradeFee(gross: bigint, feeBps: number): bigint {
+  if (
+    gross < 0n ||
+    gross > 18_446_744_073_709_551_615n ||
+    !Number.isInteger(feeBps) ||
+    feeBps < 0 ||
+    feeBps > 1000
+  )
+    throw new Error("Invalid fee inputs");
+  return (gross * BigInt(feeBps) + 9999n) / 10000n;
+}
+export function requiredSubsidy(
+  pool: Pick<Pool, "offsetYes" | "offsetNo" | "b">,
+): bigint {
+  return potential(pool.offsetYes, pool.offsetNo, pool.b) + 4n;
+}
+export function depthForBudget(budget: bigint, logOddsE6: bigint): bigint {
+  const maxB = 1_000_000_000_000n;
+  const odds = logOddsE6 < 0n ? -logOddsE6 : logOddsE6;
+  if (odds > 16_000_000n || budget < 4n || budget > MAX_Q)
+    throw new Error("Numeric range");
+  const slope = potential((maxB * odds) / 1_000_000n, 0n, maxB) + 2n;
+  const candidate = ((budget - 4n) * maxB) / slope;
+  const b = candidate > maxB ? maxB : candidate;
+  if (potential((b * odds) / 1_000_000n, 0n, b) + 4n > budget)
+    throw new Error("Insufficient subsidy");
+  return b;
+}

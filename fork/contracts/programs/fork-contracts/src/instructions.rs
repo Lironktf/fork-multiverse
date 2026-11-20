@@ -3,6 +3,17 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
 #[derive(Accounts)]
+pub struct MigrateMarket<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: Owner checked here; discriminator, exact V1/V2 size and canonical
+    /// market PDA checked in the handler before any resize or write.
+    #[account(mut, owner = crate::ID)]
+    pub market: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 pub struct InitializeConfig<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
