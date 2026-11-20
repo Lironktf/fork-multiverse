@@ -51,7 +51,7 @@ export interface AutoBuyRule {
   /** auto-trader account that holds the position (not the user's wallet) */
   executor: string;
   /** human labels from the app, e.g. "BTC above $62k? · YES" (display only) */
-  labels?: { condition: string; target: string };
+  labels?: { condition: string; target: string; world?: string };
   last?: Observation;
   firedAt?: string;
   fired?: Observation;
@@ -70,7 +70,7 @@ export function parseRuleInput(input: unknown): {
   market: string;
   trigger: Trigger;
   action: AutoBuyAction;
-  labels?: { condition: string; target: string };
+  labels?: { condition: string; target: string; world?: string };
 } {
   const v = (input ?? {}) as Record<string, unknown>;
   const t = (v.trigger ?? {}) as Record<string, unknown>;
@@ -104,7 +104,11 @@ export function parseRuleInput(input: unknown): {
   const l = v.labels as Record<string, unknown> | undefined;
   const labels =
     l && typeof l.condition === "string" && typeof l.target === "string"
-      ? { condition: l.condition.slice(0, 160), target: l.target.slice(0, 160) }
+      ? {
+          condition: l.condition.slice(0, 160),
+          target: l.target.slice(0, 160),
+          ...(typeof l.world === "string" ? { world: l.world.slice(0, 80) } : {}),
+        }
       : undefined;
   return { market: v.market, trigger, action: { side, shares, maxCost }, ...(labels ? { labels } : {}) };
 }

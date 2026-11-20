@@ -59,7 +59,8 @@ export function IfThenBuy() {
   if (enabled === false) return null; // this deployment runs no Solana service
   const chosen = usable.find((c) => c.key === cond) ?? usable[0];
   const targetLabel = tEvent ? outcomeLabel(tEvent, target.outcome) : "";
-  const mine = (rulesQ.data?.rules ?? []).filter((r) => r.labels?.target === targetLabel);
+  // rules armed from this world for this target; every rule is listed in the top bar
+  const mine = (rulesQ.data?.rules ?? []).filter((r) => r.labels?.world === verse.id && r.labels.target === targetLabel);
 
   const arm = async () => {
     if (!chosen || !tEvent) return;
@@ -73,7 +74,7 @@ export function IfThenBuy() {
         against,
         shares: Number(shares),
         maxCost: Number(maxCost),
-        labels: { condition: chosen.label, target: targetLabel },
+        labels: { condition: chosen.label, target: targetLabel, world: verse.id },
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
