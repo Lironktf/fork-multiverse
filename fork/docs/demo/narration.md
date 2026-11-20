@@ -1,38 +1,34 @@
 # FORK demo — voiceover script
 
-For [`fork-demo.mp4`](fork-demo.mp4) (3:12). Timestamps match the on-screen captions in the
-final cut. Pace is about 2.5 words per second, so each line fits its segment with a breath
-to spare. Lines in *italics* are optional if you run long.
+For [`fork-demo.mp4`](fork-demo.mp4) (3:17). **The on-screen captions are this script, word for
+word**, and each one stays up at least as long as it takes to say at a relaxed pace (about 2.4
+words per second), so you can read along with the captions or from this table. Start each line
+when its caption appears.
 
-| Time | On screen | Say |
-| --- | --- | --- |
-| 0:00 – 0:08 | Welcome screen | This is FORK: a multiverse engine for conditional forecasting, built on live Gemini prediction markets. |
-| 0:08 – 0:20 | Picking a live market | You start with a question you care about. Every probability you see here is a live Gemini market price. We pick: will Bitcoin be above sixty-two thousand five hundred on November thirtieth? |
-| 0:20 – 0:24 | Origin + odds chart | This is Origin, reality today. The market says just under even odds, and here's how that moved. |
-| 0:24 – 0:32 | Searching "iran" | Search reads titles, outcomes and the actual resolution rules, so "Iran" finds the related markets even though there's no Iran market. |
-| 0:32 – 0:52 | Building the basket | Now the interesting part: we change the assumptions. Let's assume ETH holds seventeen-fifty, and the Fed hikes in December. Each assumption is itself a live Gemini market. *We drag them into the basket.* |
-| 0:52 – 0:56 | FORK REALITY animation | Then we fork reality, into a world where both are true. |
-| 0:56 – 1:12 | Analysis starts | Claude, Codex and Grok each research the web in parallel. Then four analysts with different roles estimate the odds in this world, blind to each other. |
-| 1:12 – 1:24 | "Analysing… (sped up)" | That takes about a minute in real time, so we've sped it up. *Nothing here is pre-recorded: these are live model calls.* |
-| 1:24 – 1:32 | 66% vs market 48% | In this world, the analysts say sixty-six percent, against the market's forty-eight. That eighteen-point gap is what these assumptions are worth. |
-| 1:32 – 1:36 | Dashed line on chart | The dashed line is this world's estimate, over Gemini's real price history. |
-| 1:36 – 1:48 | Analysts and sources | Every analyst explains its reasoning, labelled with the model that actually answered, along with the sources the research found. *When they disagree, FORK shows the disagreement instead of hiding it.* |
-| 1:48 – 2:00 | "If this happens, buy" card | So what if you disagree with the market? Say: if ETH above seventeen-fifty reaches forty-five percent, buy six shares of Bitcoin above sixty-two-five, on Solana. |
-| 2:00 – 2:08 | Arming | Arming registers the exact Gemini contracts on Solana devnet, escrows the maximum cost, and starts watching ETH's odds. |
-| 2:08 – 2:12 | "Bought" | The line was crossed, so it bought: a real devnet transaction. |
-| 2:12 – 2:20 | ⚡ top-bar list | Every if-then buy, waiting or filled, lives up here. And if ETH ends below seventeen-fifty, the bet is cancelled and everyone is refunded. |
-| 2:20 – 2:32 | Compare | Compare puts two worlds side by side: what changed between them, and why each one reads the way it does. |
-| 2:32 – 2:52 | Atlas | Atlas maps how Gemini markets connect. Pick a market, and you see the ones that move with it. *You can fork straight from the map.* |
-| 2:52 – 3:00 | Related markets | Each link shows the mechanism that connects them, ranked by the models, never invented. |
-| 3:00 – 3:04 | Closing caption | Ask a question, change reality, see what the models think, and act on it on Solana. |
-| 3:04 – 3:12 | End card | *(Optional; the card speaks for itself.)* That's FORK. The program and this trade are on Solana devnet; the links are on screen. |
+| Time | Say |
+| --- | --- |
+| 0:00 | FORK is a multiverse engine for conditional forecasting, built on live Gemini prediction markets. |
+| 0:06 | Start with a question. Every probability here is a live Gemini price. Will Bitcoin be above $62,500 on November 30? |
+| 0:16 | This is Origin: reality today. The market says 26%, and this is how those odds have moved. |
+| 0:24 | Now change reality. Assume ETH holds $1,750 on November 30… |
+| 0:34 | …and the Fed hikes in December. Each assumption is itself a live Gemini market. |
+| 0:43 | Then fork reality, into a world where both are true. |
+| 0:54 | Claude, Codex and Grok research the web in parallel. Then four analysts with different roles estimate the odds in this world, blind to each other. |
+| 1:05 | That takes about a minute, so it's sped up here. |
+| 1:11 | In this world the analysts say 59%, against the market's 26%. That gap is what these assumptions are worth. |
+| 1:20 | Each analyst explains its reasoning, labelled with the model that actually answered, with the sources the research found. |
+| 1:30 | Disagree with the market? If this happens, buy: if ETH above $1,750 reaches 23%, buy 6 shares of Bitcoin above $62,500, on Solana. |
+| 1:41 | Arming registers the exact Gemini contracts on Solana devnet, escrows the maximum cost, and starts watching ETH's odds. |
+| 1:52 | ETH's odds are already past the line, so it bought: a real devnet transaction. Every if-then buy also lives up here. |
+| 2:02 | Or trade it yourself. The Trade tab turns this exact pair, Bitcoin given ETH, into a market backed by real devnet SOL. |
+| 2:12 | Connect a wallet and deposit some SOL. |
+| 2:23 | Review a trade: the quote comes from the chain itself, with the exact cost and a 1% fee to liquidity providers. |
+| 2:36 | Confirm, and the shares are yours. If ETH misses $1,750, every deposit is refunded. |
+| 2:43 | Compare puts two worlds side by side: what changed, and why each one reads the way it does. |
+| 2:52 | Atlas maps how Gemini markets connect. Each link shows the mechanism behind it, ranked by the models, never invented. |
+| 3:02 | FORK: ask a question, change reality, see what the models think, and act on it, on Solana. |
+| 3:11 | *(End card: program ID, transactions and repo. Optional: "That's FORK.")* |
 
-## Honesty notes for Q&A
-
-- Markets and prices are live Gemini data. The forecasts were live Claude, Codex and Grok
-  calls on the day of recording. In that run Grok missed the research cut-off, so the
-  research merged Claude and Codex; Grok still answered as an analyst.
-- The trade is real on Solana **devnet** with mock USDC, not mainnet money. FORK's service
-  acts as the oracle, reporting the Gemini result on-chain.
-- Edits: the ~70 s analysis wait is sped up 7× and typing 1.4×. The Solana explorer page
-  was cut (it blocks automated browsers), so the end card shows the signature to verify.
+Recorded 2026-11-20 from the production build: live Gemini prices, live Claude, Codex
+and Grok calls, and real Solana devnet transactions. Origin read 26%; the forked world
+read 59% against the market's 26%. Waiting stretches are sped up: analysis (84s shown in 6s), arm (75s shown in 3s), trade (5s shown in 2s).

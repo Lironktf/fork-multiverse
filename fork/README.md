@@ -16,11 +16,12 @@ and compare worlds side by side.
 
 ## Demo video
 
-[**docs/demo/fork-demo.mp4**](docs/demo/fork-demo.mp4) (3:12), recorded from the running product on
-2026-11-20: live Gemini markets, a live Claude + Codex + Grok analysis (the ~70 s wait is
-sped up 7×, typing 1.4×), an if-then buy executed on Solana devnet, Compare and Atlas. The
-Solana explorer refused the headless browser, so the video ends on a card with the trade
-signature to verify instead.
+[**docs/demo/fork-demo.mp4**](docs/demo/fork-demo.mp4) (3:17), recorded 2026-11-20 from the running
+production build: live Gemini markets, a live Claude + Codex + Grok analysis, an if-then buy
+executed on Solana devnet, then the **Trade** tab: wallet connect, on-chain quote and a YES buy
+with devnet SOL, Compare and Atlas. Waiting stretches (analysis, confirmations) are sped up
+and labelled. The captions are the voiceover: [docs/demo/narration.md](docs/demo/narration.md)
+has every line with its timestamp. The end card lists the program ID and both transactions.
 
 ## Solana: trade with devnet SOL (Trade tab)
 
