@@ -14,6 +14,14 @@ and compare worlds side by side.
 
 ---
 
+## Demo video
+
+[**docs/demo/fork-demo.mp4**](docs/demo/fork-demo.mp4) (3:12), recorded from the running product on
+2026-11-20: live Gemini markets, a live Claude + Codex + Grok analysis (the ~70 s wait is
+sped up 7×, typing 1.4×), an if-then buy executed on Solana devnet, Compare and Atlas. The
+Solana explorer refused the headless browser, so the video ends on a card with the trade
+signature to verify instead.
+
 ## Solana: "If this happens, buy" (devnet)
 
 The conditional-market program is **deployed on Solana devnet** at
