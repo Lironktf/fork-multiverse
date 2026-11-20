@@ -21,10 +21,15 @@ const MAX_CONCURRENCY = Number(process.env.FORK_CLAUDE_CONCURRENCY ?? 4);
 
 let available: boolean | null = null;
 let version: string | null = null;
+// A failed check (e.g. a timeout while the server is busy) is retried after a minute
+// instead of disabling this provider until restart.
+let checkedAt = 0;
+const RECHECK_MS = 60_000;
 
 export function claudeAvailable(): { available: boolean; version: string | null } {
   if (process.env.FORK_ENGINE === "demo") return { available: false, version: null };
-  if (available === null) {
+  if (available === null || (!available && Date.now() - checkedAt > RECHECK_MS)) {
+    checkedAt = Date.now();
     try {
       version = execFileSync(CLAUDE_BIN, ["--version"], { timeout: 10_000 }).toString().trim();
       available = true;

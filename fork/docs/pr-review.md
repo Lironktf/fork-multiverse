@@ -4,7 +4,7 @@ Target: `Lironktf/fork-multiverse:master`
 
 Local branch: `demo/graph-markets`
 
-Upstream consolidated: `34d53363577078dbc2770dc52cd93dc26808b783`
+Upstream consolidated: `b7f7456c695100620131f31be14e35f8fcbbd591`
 
 The Positions and auto-buy controls made it unclear which graph assumptions
 mapped to a contract or who signed a trade. The new Trade tab follows the graph's

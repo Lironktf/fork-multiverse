@@ -28,6 +28,9 @@ and verification. The app uses native SOL accounts and never mints collateral.
 The operator supplies initial liquidity and reports actual Gemini outcomes;
 users sign their own deposits, trades and withdrawals.
 
+The upstream [demo recording](docs/demo/fork-demo.mp4) is preserved as historical
+footage of the earlier auto-buy interface. Use the SOL walkthrough for this version.
+
 ## Run it
 
 From this directory, install both packages and generate the Anchor client:

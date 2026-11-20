@@ -6,7 +6,8 @@ import { useShallow } from "zustand/react/shallow";
 import { useUniverse, forecastFor } from "@/store/universe";
 import { useUI } from "@/store/ui";
 import { ancestry, cumulativeAssumptions } from "@/lib/domain/verse";
-import { fmtPct } from "@/lib/domain/market";
+import { fmtPct, observedProbability } from "@/lib/domain/market";
+import { ORIGIN_ID } from "@/lib/domain/verse";
 import { MODEL_ROLES } from "@/lib/domain/types";
 import type { Forecast, Verse } from "@/lib/domain/types";
 import { finalProbability } from "@/lib/forecast/aggregate";
@@ -31,8 +32,9 @@ function VersePick({ value, onChange, exclude }: { value: string | undefined; on
   );
 }
 
-function Side({ v, f, align, onAnalyse }: { v: Verse; f: Forecast | null; align: "left" | "right"; onAnalyse: () => void }) {
-  const p = f?.ensembleProbability ?? null;
+/** `market`: Origin's observed Gemini price, shown when Origin has no model analysis for this target. */
+function Side({ v, f, market, align, onAnalyse }: { v: Verse; f: Forecast | null; market: number | null; align: "left" | "right"; onAnalyse: () => void }) {
+  const p = f?.ensembleProbability ?? market;
   return (
     <div className={`flex flex-col ${align === "right" ? "items-end text-right" : "items-start"}`}>
       <span className="flex items-center gap-2">
@@ -42,7 +44,8 @@ function Side({ v, f, align, onAnalyse }: { v: Verse; f: Forecast | null; align:
       </span>
       <span className="num mt-2 text-[56px] font-medium leading-none tracking-tight text-ink">{p !== null ? fmtPct(p) : "—"}</span>
       <span className="mt-2 flex items-center gap-2">
-        {f ? <KindTag kind={f.kind} small /> : null}
+        {f ? <KindTag kind={f.kind} small /> : market !== null ? <KindTag kind="MARKET" small /> : null}
+        {!f && market !== null && <span className="text-[10.5px] text-ink-3">Gemini price · reality today</span>}
         {f?.disagreementSummary && <span className="num text-[10.5px] text-ink-3">models {fmtPct(f.disagreementSummary.min)}–{fmtPct(f.disagreementSummary.max)}</span>}
       </span>
       {!f && (
@@ -97,8 +100,13 @@ export function ComparePanel() {
     return { ma, mb, shared, contested, onlyA, onlyB, common: common ? verses[common] : null };
   }, [A, B, verses]);
 
-  const pa = fa?.ensembleProbability ?? null;
-  const pb = fb?.ensembleProbability ?? null;
+  // Origin is reality as it stands: without its own analysis, its reading is the live market price
+  const obs = observedProbability(events[target.eventId], target.outcome);
+  const marketP = obs?.kind === "MARKET" ? obs.value : null;
+  const ma = A?.id === ORIGIN_ID && !fa ? marketP : null;
+  const mb = B?.id === ORIGIN_ID && !fb ? marketP : null;
+  const pa = fa?.ensembleProbability ?? ma;
+  const pb = fb?.ensembleProbability ?? mb;
   const gap = pa !== null && pb !== null ? pb - pa : null;
 
   const title = (id: string) => events[id]?.title ?? id;
@@ -136,7 +144,7 @@ export function ComparePanel() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             {/* the divergence */}
             <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-6 px-8 pb-6 pt-8">
-              <Side v={A} f={fa} align="left" onAnalyse={() => requestForecast(A.id, target)} />
+              <Side v={A} f={fa} market={ma} align="left" onAnalyse={() => requestForecast(A.id, target)} />
               <div className="flex flex-col items-center">
                 <div className="relative h-[150px] w-[64px]">
                   <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/10" />
@@ -167,7 +175,7 @@ export function ComparePanel() {
                   <div className="meta mt-0.5">apart</div>
                 </div>
               </div>
-              <Side v={B} f={fb} align="right" onAnalyse={() => requestForecast(B.id, target)} />
+              <Side v={B} f={fb} market={mb} align="right" onAnalyse={() => requestForecast(B.id, target)} />
             </div>
 
             {diff && (
@@ -212,11 +220,11 @@ export function ComparePanel() {
 
             <div className="grid grid-cols-1 gap-4 border-t border-line px-6 py-5 md:grid-cols-2">
               {[
-                { v: A, f: fa },
-                { v: B, f: fb },
-              ].map(({ v, f }) => (
+                { v: A, f: fa, m: ma },
+                { v: B, f: fb, m: mb },
+              ].map(({ v, f, m }) => (
                 <div key={v.id}>
-                  <div className="meta mb-2">Why {v.name} reads {f?.ensembleProbability != null ? fmtPct(f.ensembleProbability) : "—"}</div>
+                  <div className="meta mb-2">Why {v.name} reads {f?.ensembleProbability != null ? fmtPct(f.ensembleProbability) : m !== null ? fmtPct(m) : "—"}</div>
                   {f ? (
                     <ul className="flex flex-col gap-2">
                       {f.modelOutputs.map((r) => (
@@ -228,7 +236,11 @@ export function ComparePanel() {
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-[11px] text-ink-3">Not analysed for this target.</p>
+                    <p className="text-[11px] text-ink-3">
+                      {m !== null
+                        ? `No assumptions: this is the Gemini market price today (${obs?.label ?? "Gemini"}). The gap shows how far the other world's assumptions move the analysts away from the crowd.`
+                        : "Not analysed for this target."}
+                    </p>
                   )}
                 </div>
               ))}

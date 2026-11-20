@@ -33,9 +33,7 @@ async function proxy(
       !local.has(backend.hostname) ||
       backend.protocol !== "http:"
     )
-      throw new Error(
-        "The trading service is available only on localhost.",
-      );
+      throw new Error("The trading service is available only on localhost.");
     const origin = req.headers.get("origin");
     if (origin && origin !== browserUrl.origin)
       throw new Error("Cross-origin local requests are not allowed.");
