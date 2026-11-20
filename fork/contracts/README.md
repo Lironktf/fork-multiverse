@@ -307,7 +307,7 @@ SIGNER_PATH=/absolute/path/to/test-signer.json npm run demo:fixture
 On a fresh checkout the generated program keypair has a new public ID. The
 deploy script runs `anchor keys sync` and rebuilds; review its source/config
 changes. Clients and the local loader read the resulting IDL address. Program
-keypairs stay ignored under target. Devnet deployment was not executed here.
+keypairs stay ignored under target. The current devnet deployment and browser verification are recorded in [devnet-deployment.json](docs/devnet-deployment.json); see the [app walkthrough](../docs/devnet.md).
 The demo is one run per configured signer; use a fresh test signer/config for
 another run. Mainnet is rejected by the supplied client/scripts.
 

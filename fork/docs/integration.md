@@ -17,13 +17,13 @@ repository. The previously empty nested Git metadata was preserved locally under
 
 The Node packages retain separate lockfiles to preserve their tested Anchor/web3
 compatibility boundaries. Build artifacts, local signers and validator ledgers
-remain ignored. The original Fork appearance is unchanged.
+remain ignored. The Trade tab connects exact conditional markets to the selected graph world.
 
 ## Compatibility map
 
 | Existing surface                                   | Integration                                                                                                    |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Next.js 15 / React 19 / Tailwind / Zustand         | Retained; no visual redesign or replacement application                                                        |
+| Next.js 15 / React 19 / Tailwind / Zustand         | Retained; graph-linked Trade tab alongside Forecast                                                            |
 | Wallet Standard via existing wallet-adapter        | Retained; Anchor 1.1.2 requires web3.js 1.x; pin compatible versions                                           |
 | Gemini event-level discovery                       | Retained; normalize Bitcoin/BTC and Solana/SOL searches; trading additionally selects exact instrument symbols |
 | Forecast/model probabilities                       | Research only; never converted to conditional execution prices or final outcomes                               |
@@ -82,19 +82,17 @@ NEXT_PUBLIC_SOLANA_RPC=http://127.0.0.1:8899 \
 npm --prefix fork run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
-Open `http://127.0.0.1:3000`. Choose a target in Fork, then open **FORK Positions**
-at the bottom of the existing Forecast panel. Search exact parent A and target B
-instruments, read their rules and resolution criteria, enter a conservative UTC
-trading close for each and acknowledge the rules. **Create or connect market**
-registers immutable bindings and starts a local LMSR with b=100, initial log odds
-zero and an 80 mock USDC funding budget. Depth is sized to that budget, with
-a default 1% LP fee for new markets (`FORK_FEE_BPS`). An optional community
-Funding phase allows connected wallets to fund, withdraw before start and claim
-terminal LP equity. See [accounting and migration](../contracts/docs/liquidity.md). No Gemini orders are ever submitted.
+Open `http://127.0.0.1:3000`. Select a live Gemini target and fork a world with a
+live YES assumption or specific categorical outcome. Open **Trade → Build this
+market**, review both source rules and trading closes, then **Create market**.
+Alternatively, choose **Available markets → Open in graph & trade** to select
+an existing market and its matching graph world. New markets start at 50% with
+depth sized for 80 test USDC of sponsored liquidity and the configured LP fee.
+Wallet LP controls remain under **Liquidity & contract details** for markets in
+Funding. See [accounting and migration](../contracts/docs/liquidity.md).
 
 Connect a Wallet Standard Solana wallet through the existing top-right button.
-The wallet must support local transactions with the configured RPC. Use **Get
-mock collateral + SOL**, then deposit. Request an on-chain quote, review its cost
+The wallet must support local transactions with the configured RPC. Use **Get test USDC + SOL**, then deposit. Click **Review trade**, review its cost
 and slippage limit, and confirm a YES/NO buy or sell in the wallet. Sells credit
 conditional cash. **Redeem eligible balance** is enabled only when a confirmed
 terminal state has a positive entitlement. The mock faucet tops the wallet up to

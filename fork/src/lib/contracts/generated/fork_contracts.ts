@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/fork_contracts.json`.
  */
 export type ForkContracts = {
-  "address": "13Z5QXDCa7bNddx55di4qxg7cAepcjy8BjDxag9bBJdN",
+  "address": "2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv",
   "metadata": {
     "name": "forkContracts",
     "version": "0.1.0",
@@ -182,6 +182,143 @@ export type ForkContracts = {
       "args": [
         {
           "name": "b",
+          "type": "u64"
+        },
+        {
+          "name": "initialLogOddsE6",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "createMarketForBudget",
+      "docs": [
+        "Size depth from a funding budget before anyone contributes. Both depth",
+        "and starting probability remain immutable, including throughout Funding."
+      ],
+      "discriminator": [
+        107,
+        26,
+        205,
+        189,
+        196,
+        35,
+        235,
+        254
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.creator",
+                "account": "config"
+              }
+            ]
+          },
+          "relations": [
+            "parent",
+            "target"
+          ]
+        },
+        {
+          "name": "parent"
+        },
+        {
+          "name": "target"
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "parent"
+              },
+              {
+                "kind": "account",
+                "path": "target"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "budget",
           "type": "u64"
         },
         {
@@ -553,6 +690,41 @@ export type ForkContracts = {
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "migrateMarket",
+      "docs": [
+        "Permissionless, idempotent rent top-up. Existing economics never change."
+      ],
+      "discriminator": [
+        201,
+        113,
+        181,
+        120,
+        217,
+        60,
+        109,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "market PDA checked in the handler before any resize or write."
+          ],
+          "writable": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "openLp",
@@ -1236,6 +1408,58 @@ export type ForkContracts = {
         {
           "name": "pauseAuthority",
           "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "setFee",
+      "docs": [
+        "Only changes the default for future markets. Existing LP/trader terms are immutable."
+      ],
+      "discriminator": [
+        18,
+        154,
+        24,
+        18,
+        237,
+        214,
+        19,
+        80
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.creator",
+                "account": "config"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "feeBps",
+          "type": "u16"
         }
       ]
     },
@@ -2217,6 +2441,17 @@ export type ForkContracts = {
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "feeBps",
+            "type": "u16"
+          },
+          {
+            "name": "feesAccrued",
+            "docs": [
+              "Conditional fees: embedded in LP residual on valid settlement; canceled on VOID."
+            ],
+            "type": "u64"
           }
         ]
       }
@@ -2260,6 +2495,10 @@ export type ForkContracts = {
           },
           {
             "name": "yesPriceE18",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
             "type": "u64"
           }
         ]
@@ -2356,6 +2595,10 @@ export type ForkContracts = {
           },
           {
             "name": "conditionalCash",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
             "type": "u64"
           }
         ]
