@@ -19,19 +19,26 @@ export interface LiveResult {
   fetchedAt?: string;
   error?: string;
   cached?: boolean;
+  partial?: boolean;
   searchedEvents?: number;
 }
 
 /** Live Gemini events (server-cached, abortable, deduplicated by TanStack Query). */
-export function useLiveEvents(q: string, enabled = true) {
+export function useLiveEvents(q: string, enabled = true, view?: "atlas" | "atlas-full") {
   const dq = useDebounced(q.trim(), 260);
   return useQuery<LiveResult>({
-    queryKey: ["gemini-events", dq],
+    queryKey: ["gemini-events", dq, view],
     enabled,
     staleTime: 40_000,
     queryFn: async ({ signal }) => {
-      const res = await fetch(`/api/events?${new URLSearchParams(dq ? { q: dq } : {})}`, { signal });
-      return res.json();
+      const res = await fetch(`/api/events?${new URLSearchParams({ ...(dq ? { q: dq } : {}), ...(view ? { view: "atlas" } : {}), ...(view === "atlas-full" ? { catalog: "full" } : {}) })}`, { signal });
+      if (!res.ok) throw new Error(`Gemini markets request failed (HTTP ${res.status}). Try refreshing.`);
+      const result: LiveResult = await res.json().catch(() => {
+        throw new Error("Gemini markets returned an unreadable response. Try refreshing.");
+      });
+      if (!result || !Array.isArray(result.events)) throw new Error("Gemini markets response is missing its event list.");
+      if (view && !dq && !result.ok) throw new Error(result.error ?? "Gemini markets are unavailable.");
+      return result;
     },
   });
 }

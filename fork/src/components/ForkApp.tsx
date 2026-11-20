@@ -12,6 +12,9 @@ import { ActionBar, TopRight } from "@/components/hud/Controls";
 import { Palette } from "@/components/hud/Palette";
 import { Toasts } from "@/components/hud/Toasts";
 import { DiscoveryPanel } from "@/components/discovery/DiscoveryPanel";
+import { Atlas } from "@/components/atlas/Atlas";
+import { ORIGIN_ID } from "@/lib/domain/verse";
+import { validateScenario } from "@/lib/domain/scenario";
 import { Basket } from "@/components/basket/Basket";
 import { DragLayer } from "@/components/basket/DragLayer";
 import { ForecastPanel } from "@/components/forecast/ForecastPanel";
@@ -22,7 +25,7 @@ import { Welcome } from "@/components/Welcome";
 import { useUniverse } from "@/store/universe";
 import { useUI, prefersReducedMotion } from "@/store/ui";
 import { engine } from "@/lib/client/runtime";
-import { focusCurrent, pollForecasts } from "@/lib/client/actions";
+import { focusCurrent, forkReality, pollForecasts } from "@/lib/client/actions";
 
 function useHydrated() {
   const [h, setH] = useState(false);
@@ -49,7 +52,7 @@ function useMedia(q: string) {
 }
 
 /** Background services: forecast polling, server mirror, motion preference, shortcuts. */
-function Services() {
+function Services({ atlasOpen }: { atlasOpen: boolean }) {
   const reduced = useUI((s) => s.reducedMotion);
   useEffect(() => {
     const apply = () => {
@@ -98,6 +101,7 @@ function Services() {
   }, []);
 
   useEffect(() => {
+    if (atlasOpen) return;
     const k = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       const typing = t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
@@ -118,16 +122,19 @@ function Services() {
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, []);
+  }, [atlasOpen]);
   return null;
 }
 
-function Workspace() {
+function Workspace({ openAtlas, atlasFork }: { openAtlas: () => void; atlasFork: number }) {
   const { phase, panel } = useUI(useShallow((s) => ({ phase: s.forkPhase, panel: s.panel })));
   const desktop = useMedia("(min-width: 1100px)");
   const tablet = useMedia("(min-width: 760px)");
   const [discovery, setDiscovery] = useState(true);
-  const [sheet, setSheet] = useState<"forecast" | "basket" | "discover">("basket");
+  const [sheet, setSheet] = useState<"forecast" | "basket" | "discover">(atlasFork ? "forecast" : "basket");
+  useEffect(() => {
+    if (atlasFork) setSheet("forecast");
+  }, [atlasFork]);
   const cinematic = phase === "rupture" || phase === "travel" || phase === "arrive";
   const hudFade = { opacity: cinematic ? 0.04 : 1, transition: { duration: cinematic ? 0.25 : 0.6 } };
 
@@ -159,7 +166,7 @@ function Workspace() {
       <motion.div animate={hudFade} className="pointer-events-none fixed inset-0 z-10">
         {/* top bar */}
         <div className="absolute inset-x-4 top-4 z-20 flex items-start justify-between gap-3">
-          <TopLeft />
+          <TopLeft openAtlas={openAtlas} />
           {desktop && (
             <div className="absolute left-1/2 top-0 -translate-x-1/2">
               <TargetSelector />
@@ -244,19 +251,52 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWind
 export function ForkApp() {
   const hydrated = useHydrated();
   const started = useUniverse((s) => s.started);
+  const [atlasOpen, setAtlasOpen] = useState(false);
+  const [atlasVisited, setAtlasVisited] = useState(false);
+  const [atlasFork, setAtlasFork] = useState(0);
+  const openAtlas = () => {
+    useUI.getState().set({ palette: false });
+    setAtlasVisited(true);
+    setAtlasOpen(true);
+  };
   return (
     <QueryClientProvider client={queryClient}>
       <SolanaProvider>
         <main className="fixed inset-0 overflow-hidden bg-bg" data-started={started}>
           {hydrated && (
             <>
-              <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: started ? 1 : 0.55 }} transition={{ duration: 1.2 }}>
-                <GraphView />
-              </motion.div>
-              <Services />
-              <AnimatePresence>{started ? <Workspace key="ws" /> : <Welcome key="welcome" />}</AnimatePresence>
-              <DragLayer />
-              <Palette />
+              <div inert={atlasOpen} className={atlasOpen ? "invisible" : undefined}>
+                <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: started ? 1 : 0.55 }} transition={{ duration: 1.2 }}>
+                  <GraphView />
+                </motion.div>
+                <AnimatePresence>{started ? <Workspace key="ws" openAtlas={openAtlas} atlasFork={atlasFork} /> : <Welcome key="welcome" openAtlas={openAtlas} />}</AnimatePresence>
+                <DragLayer />
+                <Palette />
+              </div>
+              <Services atlasOpen={atlasOpen} />
+              {atlasVisited && (
+                <div hidden={!atlasOpen}>
+                  <Atlas onBack={() => setAtlasOpen(false)} onFork={({ target, assumptions, events }) => {
+                    if (useUI.getState().forkPhase !== "idle") return;
+                    const scenarioEvents = new Map(events.map((event) => [event.id, event]));
+                    try {
+                      validateScenario(target, assumptions, scenarioEvents);
+                    } catch (error) {
+                      useUI.getState().toast((error as Error).message, "warn");
+                      return;
+                    }
+                    const universe = useUniverse.getState();
+                    universe.registerEvents([target, ...assumptions].flatMap(({ eventId }) => scenarioEvents.get(eventId) ?? []));
+                    universe.setCurrentVerse(ORIGIN_ID);
+                    universe.start(target);
+                    universe.setMode("explore");
+                    useUI.getState().set({ panel: null });
+                    setAtlasFork((count) => count + 1);
+                    setAtlasOpen(false);
+                    void forkReality({ parentId: ORIGIN_ID, assumptions, engine: "auto" });
+                  }} />
+                </div>
+              )}
               <Toasts />
             </>
           )}

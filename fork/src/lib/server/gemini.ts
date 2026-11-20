@@ -92,11 +92,17 @@ const SHORT_HORIZON_MS = 36 * 3600_000;
 
 const BROWSE_CATEGORIES = ["Economics", "Crypto", "Politics", "Tech", "Business", "Commodities", "Culture"];
 
-function shape(raw: RawEvent[], fetchedAt: number) {
+function validRawEvent(e: RawEvent): boolean {
+  return !!e && typeof e.ticker === "string" && !!e.ticker && typeof e.title === "string" && !!e.title &&
+    (e.type === "binary" || e.type === "categorical");
+}
+
+function shape(raw: RawEvent[], fetchedAt: number, allMarkets = false) {
   const now = Date.now();
   return raw
-    .filter((e) => e.category?.toLowerCase() !== "sports")
-    .filter((e) => !e.expiryDate || new Date(e.expiryDate).getTime() - now > SHORT_HORIZON_MS)
+    .filter(validRawEvent)
+    .filter((e) => allMarkets || e.category?.toLowerCase() !== "sports")
+    .filter((e) => allMarkets || !e.expiryDate || new Date(e.expiryDate).getTime() - now > SHORT_HORIZON_MS)
     .map((e) => normalizeEvent(e, fetchedAt));
 }
 
@@ -113,18 +119,50 @@ function collapseSeries(events: ForkEvent[], keepOrder = false) {
   return keepOrder ? out : out.sort((a, b) => (b.metadata.volumeUsd ?? 0) - (a.metadata.volumeUsd ?? 0));
 }
 
-/** Every active non-sports event, one request per category (each is < 100 events today; limit 500 for headroom). */
-async function catalog(cats: string[]) {
-  const results = await Promise.allSettled(
-    cats.map((c) => getJson<{ data: RawEvent[] }>(`/v1/prediction-markets/events?${new URLSearchParams({ status: "active", limit: "500", category: c })}`)),
-  );
-  const ok = results.filter((r): r is PromiseFulfilledResult<{ value: { data: RawEvent[] }; fetchedAt: number; cached: boolean }> => r.status === "fulfilled");
+/** The legacy view uses a category shortlist. Atlas pages through the public event catalog. */
+async function catalog(cats: (string | undefined)[], paginate = false) {
+  const results = await Promise.allSettled(cats.map(async (category) => {
+    const pageSize = paginate ? 75 : 500;
+    const params = new URLSearchParams({ status: "active", limit: String(pageSize) });
+    if (category) params.set("category", category);
+    const getPage = async () => {
+      const page = await getJson<{ data: RawEvent[]; pagination?: { total?: number } }>(`/v1/prediction-markets/events?${params}`);
+      if (!Array.isArray(page.value?.data)) throw new GeminiUnavailable("Gemini returned an invalid event list");
+      return page;
+    };
+    const first = await getPage();
+    if (!paginate) return { ...first, partial: false };
+    const events = new Map(first.value.data.map((event) => [event.ticker, event]));
+    let page = first;
+    let fetchedAt = first.fetchedAt;
+    let cached = first.cached;
+    for (let offset = first.value.data.length; page.value.data.length && (
+      typeof page.value.pagination?.total === "number" ? offset < page.value.pagination.total : page.value.data.length >= pageSize
+    ); offset += page.value.data.length) {
+      params.set("offset", String(offset));
+      try {
+        page = await getPage();
+      } catch {
+        return { value: { data: [...events.values()] }, fetchedAt, cached, partial: true };
+      }
+      if (!page.value.data.length) return { value: { data: [...events.values()] }, fetchedAt, cached, partial: true };
+      const size = events.size;
+      for (const event of page.value.data) events.set(event.ticker, event);
+      if (page.value.data.length && events.size === size) {
+        return { value: { data: [...events.values()] }, fetchedAt, cached, partial: true };
+      }
+      fetchedAt = Math.min(fetchedAt, page.fetchedAt);
+      cached &&= page.cached;
+    }
+    return { value: { data: [...events.values()] }, fetchedAt, cached, partial: false };
+  }));
+  const ok = results.filter((r): r is PromiseFulfilledResult<{ value: { data: RawEvent[] }; fetchedAt: number; cached: boolean; partial: boolean }> => r.status === "fulfilled");
   if (!ok.length) throw new GeminiUnavailable((results[0] as PromiseRejectedResult).reason?.message ?? "all category requests failed");
   return {
     batches: ok.map((r) => ({ raw: r.value.value.data, fetchedAt: r.value.fetchedAt })),
     oldest: Math.min(...ok.map((r) => r.value.fetchedAt)),
     cached: ok.every((r) => r.value.cached),
-    partial: ok.length < cats.length,
+    partial: ok.length < cats.length || ok.some((r) => r.value.partial),
   };
 }
 
@@ -135,17 +173,20 @@ async function catalog(cats: string[]) {
  * Browsing (no query) walks the non-sports categories, because an unfiltered
  * list is dominated by sports and intraday contracts.
  */
-export async function searchGeminiEvents(opts: { q?: string; category?: string; limit?: number }) {
+export async function searchGeminiEvents(opts: { q?: string; category?: string; limit?: number; allMarkets?: boolean; curated?: boolean }) {
   const cats = opts.category ? [opts.category] : BROWSE_CATEGORIES;
+  const loadCatalog = () => opts.allMarkets && !opts.curated
+    ? catalog(opts.category ? cats : [undefined], true).catch(async () => ({ ...await catalog(cats), partial: true }))
+    : catalog(cats);
   if (opts.q) {
     const params = new URLSearchParams({ status: "active", limit: String(opts.limit ?? 100), search: opts.q });
     if (opts.category) params.set("category", opts.category);
-    const [cat, upstream] = await Promise.allSettled([catalog(cats), getJson<{ data: RawEvent[] }>(`/v1/prediction-markets/events?${params}`)]);
+    const [cat, upstream] = await Promise.allSettled([loadCatalog(), getJson<{ data: RawEvent[] }>(`/v1/prediction-markets/events?${params}`)]);
     if (cat.status === "rejected" && upstream.status === "rejected") throw cat.reason;
     const fetchedAtOf = new Map<string, number>();
     const pool = new Map<string, RawEvent>();
     const add = (e: RawEvent, at: number) => {
-      if (pool.has(e.ticker)) return;
+      if (!validRawEvent(e) || pool.has(e.ticker)) return;
       pool.set(e.ticker, e);
       fetchedAtOf.set(e.ticker, at);
     };
@@ -154,8 +195,8 @@ export async function searchGeminiEvents(opts: { q?: string; category?: string; 
     const hits = searchEvents([...pool.values()], opts.q);
     const now = Date.now();
     const events = hits
-      .filter((h) => h.event.category?.toLowerCase() !== "sports")
-      .filter((h) => !h.event.expiryDate || new Date(h.event.expiryDate).getTime() - now > SHORT_HORIZON_MS)
+      .filter((h) => opts.allMarkets || h.event.category?.toLowerCase() !== "sports")
+      .filter((h) => opts.allMarkets || !h.event.expiryDate || new Date(h.event.expiryDate).getTime() - now > SHORT_HORIZON_MS)
       .map((h) => {
         const ev = normalizeEvent(h.event, fetchedAtOf.get(h.event.ticker) ?? now);
         ev.metadata = { ...ev.metadata, match: h.match, related: h.related };
@@ -163,7 +204,7 @@ export async function searchGeminiEvents(opts: { q?: string; category?: string; 
       });
     const oldest = Math.min(...[...fetchedAtOf.values()]);
     return {
-      events: collapseSeries(events, true),
+      events: opts.allMarkets ? events : collapseSeries(events, true),
       fetchedAt: new Date(Number.isFinite(oldest) ? oldest : now).toISOString(),
       cached: cat.status === "fulfilled" && cat.value.cached,
       total: events.length,
@@ -171,9 +212,9 @@ export async function searchGeminiEvents(opts: { q?: string; category?: string; 
       partial: cat.status === "rejected" || (cat.status === "fulfilled" && cat.value.partial),
     };
   }
-  const c = await catalog(cats);
-  const events = c.batches.flatMap((b) => shape(b.raw, b.fetchedAt));
-  return { events: collapseSeries(events), fetchedAt: new Date(c.oldest).toISOString(), cached: c.cached, total: events.length, partial: c.partial };
+  const c = await loadCatalog();
+  const events = c.batches.flatMap((b) => shape(b.raw, b.fetchedAt, opts.allMarkets));
+  return { events: opts.allMarkets ? events.sort((a, b) => (b.metadata.volumeUsd ?? 0) - (a.metadata.volumeUsd ?? 0)) : collapseSeries(events), fetchedAt: new Date(c.oldest).toISOString(), cached: c.cached, total: events.length, partial: c.partial };
 }
 
 /** Warm the browse cache once at boot so the first visitor doesn't wait on the 1 req/s gate. */

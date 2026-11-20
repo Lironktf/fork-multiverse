@@ -34,7 +34,7 @@ export async function requestForecast(verseId: string, target: TargetRef, opts: 
     outcome: a.selectedOutcome,
     layer: a.addedAtVerseId === verseId ? "new" : "inherited",
   }));
-  const forecastId = `${verseId}__${targetKey(target).replace(/[^A-Za-z0-9:_-]/g, "_")}__${Date.now().toString(36)}`;
+  const forecastId = `forecast-${crypto.randomUUID()}`;
   try {
     const res = await fetch("/api/forecast", {
       method: "POST",
@@ -50,8 +50,10 @@ export async function requestForecast(verseId: string, target: TargetRef, opts: 
         baseline: baselineFor(target, opts.engine ?? s.engine),
       }),
     });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error ?? "forecast request failed");
+    const json = await res.json().catch(() => {
+      throw new Error(`Verse forecast endpoint returned an unreadable response (HTTP ${res.status})`);
+    });
+    if (!res.ok || !json.ok) throw new Error(json.error ?? `Verse forecast request failed (HTTP ${res.status})`);
     const f = json.forecast as Forecast;
     s.upsertForecast(f);
     s.linkForecast(verseId, target, f.id);
@@ -132,7 +134,7 @@ export function fitConstellationK() {
 
 /* ---------------- forking ---------------- */
 
-export async function forkReality(opts: { assumptions?: { eventId: string; outcome: string }[]; relationshipType?: Verse["relationshipType"]; parentId?: string } = {}) {
+export async function forkReality(opts: { assumptions?: { eventId: string; outcome: string }[]; relationshipType?: Verse["relationshipType"]; parentId?: string; engine?: "auto" | "demo" } = {}) {
   const ui = useUI.getState();
   if (ui.forkPhase !== "idle") return null; // state machine: one transition at a time
   const s = useUniverse.getState();
@@ -151,12 +153,13 @@ export async function forkReality(opts: { assumptions?: { eventId: string; outco
   // Need a baseline for non-market targets: analyse the Origin too (once).
   const ev = s.events[target.eventId];
   const obs = observedProbability(ev, target.outcome);
-  if (s.engine !== "demo" && obs?.kind !== "MARKET" && !forecastFor(s, ORIGIN_ID, target)) requestForecast(ORIGIN_ID, target);
+  const forecastEngine = opts.engine ?? s.engine;
+  if (forecastEngine !== "demo" && obs?.kind !== "MARKET" && !forecastFor(s, ORIGIN_ID, target)) requestForecast(ORIGIN_ID, target, { engine: forecastEngine });
   // Analysis starts immediately; the choreography never waits for it.
-  requestForecast(child.id, target);
+  requestForecast(child.id, target, { engine: forecastEngine });
 
   const converge = [
-    ...s.basket.map((b) => nid.pending(parentId, b.eventId)),
+    ...s.basket.filter((b) => !opts.assumptions || assumptions.some((a) => a.eventId === b.eventId && a.outcome === b.outcome)).map((b) => nid.pending(parentId, b.eventId)),
     ...cumulativeAssumptions(parent).map((a) => nid.assumption(parentId, a.eventId)),
   ];
   engine.reduced = prefersReducedMotion();

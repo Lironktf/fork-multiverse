@@ -60,7 +60,7 @@ export const ForkEvent = z.object({
   source: EventSource,
   externalMarketId: z.string().nullable().default(null),
   eventType: z.enum(["binary", "categorical"]),
-  possibleOutcomes: z.array(z.string()).min(2),
+  possibleOutcomes: z.array(z.string()),
   resolutionCriteria: z.string().default(""),
   resolutionDate: z.string().nullable().default(null),
   /** Free-form source metadata (urls, tickers, illustrative baselines). */
@@ -68,6 +68,8 @@ export const ForkEvent = z.object({
     .object({
       url: z.string().optional(),
       ticker: z.string().optional(),
+      sourceCategory: z.string().optional(),
+      series: z.string().optional(),
       /** For categorical gemini events: outcome -> contract id */
       contractIds: z.record(z.string(), z.string()).optional(),
       /** Illustrative baseline P(target outcome) for demo events */
@@ -87,7 +89,7 @@ export const ForkEvent = z.object({
   /** Latest snapshots per outcome (only for live market events) */
   snapshots: z.array(MarketSnapshot).optional(),
   fetchedAt: z.string().optional(),
-});
+}).refine((event) => event.source === "gemini" || event.possibleOutcomes.length >= 2, { path: ["possibleOutcomes"], message: "Choose at least two outcomes" });
 export type ForkEvent = z.infer<typeof ForkEvent>;
 
 /** A target is an (event, outcome) pair whose probability we forecast. */

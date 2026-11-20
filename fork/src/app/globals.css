@@ -373,3 +373,10 @@ main[data-started="false"] .gnode[data-type="target"] .gnode-inner {
 main[data-started="true"] .gnode[data-type="target"] .gnode-inner {
   transition: opacity 0.9s var(--ease-out) 0.15s;
 }
+
+.atlas-canvas {
+  background-color: var(--bg);
+  background-image: radial-gradient(circle at center, rgba(124, 214, 255, 0.065), transparent 62%),
+    radial-gradient(circle, rgba(124, 214, 255, 0.14) 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px;
+}
