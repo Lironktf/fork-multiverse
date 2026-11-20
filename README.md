@@ -6,7 +6,7 @@ See the [development workflow](fork/docs/integration.md),
 [verification evidence](fork/docs/verification.md), and
 [review notes](fork/docs/pr-review.md).
 
-For today's demo, follow the [devnet walkthrough](fork/docs/devnet.md).
+For the demo, follow the [devnet walkthrough](fork/docs/devnet.md).
 Use **Trade → Available markets → Open in graph & trade**, then connect Phantom,
 deposit devnet SOL and review a buy or sell.
 
