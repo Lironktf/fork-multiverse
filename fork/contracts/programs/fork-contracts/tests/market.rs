@@ -62,6 +62,12 @@ impl H {
         Self::configured(log_odds, 0, None)
     }
     fn configured(log_odds: i64, fee_bps: u16, budget: Option<u64>) -> Self {
+        Self::with_collateral(log_odds, fee_bps, budget, false)
+    }
+    fn native() -> Self {
+        Self::with_collateral(0, 100, None, true)
+    }
+    fn with_collateral(log_odds: i64, fee_bps: u16, budget: Option<u64>, native: bool) -> Self {
         let mut svm = LiteSVM::new();
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../target/deploy/fork_contracts.so");
@@ -75,27 +81,58 @@ impl H {
         svm.set_sysvar(&clock);
         let users: Vec<_> = (0..6).map(|_| Keypair::new()).collect();
         for u in &users {
-            svm.airdrop(&u.pubkey(), 10_000_000_000).unwrap();
+            svm.airdrop(&u.pubkey(), 100_000_000_000).unwrap();
         }
         let mk = Keypair::new();
-        let mint = mk.pubkey();
-        send(
-            &mut svm,
-            &users[0],
-            &[&mk],
-            &[
-                create_account(&users[0].pubkey(), &mint, svm_rent(82), 82, &spl_token::ID),
-                spl_token::instruction::initialize_mint2(
-                    &spl_token::ID,
-                    &mint,
-                    &users[0].pubkey(),
-                    None,
-                    6,
-                )
-                .unwrap(),
-            ],
-        )
-        .unwrap();
+        let mint = if native {
+            spl_token::native_mint::ID
+        } else {
+            mk.pubkey()
+        };
+        if native {
+            let mut data = vec![0; spl_token::state::Mint::LEN];
+            spl_token::state::Mint::pack(
+                spl_token::state::Mint {
+                    mint_authority: None.into(),
+                    supply: 0,
+                    decimals: 9,
+                    is_initialized: true,
+                    freeze_authority: None.into(),
+                },
+                &mut data,
+            )
+            .unwrap();
+            svm.set_account(
+                mint,
+                solana_account::Account {
+                    lamports: svm_rent(data.len()),
+                    data,
+                    owner: spl_token::ID,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            )
+            .unwrap();
+        }
+        if !native {
+            send(
+                &mut svm,
+                &users[0],
+                &[&mk],
+                &[
+                    create_account(&users[0].pubkey(), &mint, svm_rent(82), 82, &spl_token::ID),
+                    spl_token::instruction::initialize_mint2(
+                        &spl_token::ID,
+                        &mint,
+                        &users[0].pubkey(),
+                        None,
+                        6,
+                    )
+                    .unwrap(),
+                ],
+            )
+            .unwrap();
+        }
         let mut tokens = vec![];
         for u in &users {
             let t = Keypair::new();
@@ -105,7 +142,13 @@ impl H {
                 &users[0],
                 &[&t],
                 &[
-                    create_account(&users[0].pubkey(), &key, svm_rent(165), 165, &spl_token::ID),
+                    create_account(
+                        &users[0].pubkey(),
+                        &key,
+                        svm_rent(165) + if native { 10_000 * U } else { 0 },
+                        165,
+                        &spl_token::ID,
+                    ),
                     spl_token::instruction::initialize_account3(
                         &spl_token::ID,
                         &key,
@@ -113,21 +156,28 @@ impl H {
                         &u.pubkey(),
                     )
                     .unwrap(),
-                    spl_token::instruction::mint_to(
-                        &spl_token::ID,
-                        &mint,
-                        &key,
-                        &users[0].pubkey(),
-                        &[],
-                        10_000 * U,
-                    )
-                    .unwrap(),
+                    if native {
+                        spl_token::instruction::sync_native(&spl_token::ID, &key).unwrap()
+                    } else {
+                        spl_token::instruction::mint_to(
+                            &spl_token::ID,
+                            &mint,
+                            &key,
+                            &users[0].pubkey(),
+                            &[],
+                            10_000 * U,
+                        )
+                        .unwrap()
+                    },
                 ],
             )
             .unwrap();
             tokens.push(key);
         }
-        let config = pda(&[b"config", users[0].pubkey().as_ref()]);
+        let config = pda(&[
+            if native { b"config-sol" } else { b"config" },
+            users[0].pubkey().as_ref(),
+        ]);
         let mut h = Self {
             svm,
             users,
@@ -139,23 +189,43 @@ impl H {
             vault: Pubkey::default(),
             max_cu: 0,
         };
-        h.ok(
-            instruction(
-                a::InitializeConfig {
-                    admin: h.key(0),
-                    config,
-                    mint,
-                    system_program: system_program::ID,
-                },
-                ix::InitializeConfig {
-                    reporter: h.key(5),
-                    pause_authority: h.key(0),
-                    max_trade: math::MAX_B,
-                    max_deposits: math::MAX_Q,
-                },
-            ),
-            0,
-        );
+        if native {
+            h.ok(
+                instruction(
+                    a::InitializeSolConfig {
+                        admin: h.key(0),
+                        config,
+                        mint,
+                        system_program: system_program::ID,
+                    },
+                    ix::InitializeSolConfig {
+                        reporter: h.key(5),
+                        pause_authority: h.key(0),
+                        max_trade: math::MAX_B,
+                        max_deposits: math::MAX_Q,
+                    },
+                ),
+                0,
+            );
+        } else {
+            h.ok(
+                instruction(
+                    a::InitializeConfig {
+                        admin: h.key(0),
+                        config,
+                        mint,
+                        system_program: system_program::ID,
+                    },
+                    ix::InitializeConfig {
+                        reporter: h.key(5),
+                        pause_authority: h.key(0),
+                        max_trade: math::MAX_B,
+                        max_deposits: math::MAX_Q,
+                    },
+                ),
+                0,
+            );
+        }
         h.ok(
             instruction(
                 a::Administer {
@@ -1207,4 +1277,108 @@ fn v1_migration_preserves_every_byte_and_claims_and_cannot_reset_fees() {
         ix::MigrateMarket {},
     );
     assert!(h.exec(bad, 1).is_err());
+}
+
+#[test]
+fn native_sol_is_fully_backed_through_trades_settlement_and_void() {
+    for (a, b) in [
+        (Outcome::Yes, Outcome::Yes),
+        (Outcome::Yes, Outcome::No),
+        (Outcome::No, Outcome::Unresolved),
+    ] {
+        let mut h = H::native();
+        h.start();
+        for (who, yes, buy, amount) in [
+            (1, true, true, 50 * U),
+            (2, false, true, 25 * U),
+            (1, true, false, 20 * U),
+        ] {
+            h.trade(who, yes, buy, amount);
+            let vault = h.svm.get_account(&h.vault).unwrap();
+            let token = spl_token::state::Account::unpack(&vault.data).unwrap();
+            assert!(token.is_native());
+            assert_eq!(vault.lamports - token.is_native.unwrap(), token.amount);
+            assert_eq!(token.amount, h.m().lp_deposits + h.m().principal);
+            h.invariants();
+        }
+        h.clock(NOW + 300);
+        h.report(0, a, NOW + 300);
+        if b != Outcome::Unresolved {
+            h.report(1, b, NOW + 300);
+        }
+        h.sync();
+        h.finish(false);
+        let vault = h.svm.get_account(&h.vault).unwrap();
+        let token = spl_token::state::Account::unpack(&vault.data).unwrap();
+        assert_eq!(vault.lamports - token.is_native.unwrap(), token.amount);
+        assert!(token.amount <= 1, "only pro-rata rounding dust may remain");
+    }
+}
+
+#[test]
+fn native_sol_rejects_custom_mints_foreign_collateral_and_unauthorized_payouts() {
+    let mut legacy = H::new(0);
+    let config = pda(&[b"config-sol", legacy.key(0).as_ref()]);
+    assert!(legacy
+        .exec(
+            instruction(
+                a::InitializeSolConfig {
+                    admin: legacy.key(0),
+                    config,
+                    mint: legacy.mint,
+                    system_program: system_program::ID
+                },
+                ix::InitializeSolConfig {
+                    reporter: legacy.key(5),
+                    pause_authority: legacy.key(0),
+                    max_trade: math::MAX_B,
+                    max_deposits: math::MAX_Q
+                }
+            ),
+            0
+        )
+        .is_err());
+    let mut h = H::native();
+    h.start();
+    let before = h.svm.get_account(&h.vault).unwrap();
+    let principal = h.m().principal;
+    let mut bad = h.tf(1);
+    bad.user_token = h.tokens[2];
+    assert!(h
+        .exec(instruction(bad, ix::Deposit { amount: U }), 1)
+        .is_err());
+    assert!(h
+        .exec(
+            instruction(
+                h.tf(1),
+                ix::Deposit {
+                    amount: 100_000 * U
+                }
+            ),
+            1
+        )
+        .is_err());
+    assert_eq!(h.m().principal, principal);
+    assert_eq!(
+        h.svm.get_account(&h.vault).unwrap().lamports,
+        before.lamports
+    );
+    assert!(h
+        .exec(instruction(h.lf(3), ix::WithdrawLp { amount: U }), 3)
+        .is_err());
+    assert!(h.exec(instruction(h.tf(1), ix::Redeem {}), 1).is_err());
+    h.clock(NOW + 300);
+    h.report(0, Outcome::No, NOW + 300);
+    h.sync();
+    let mut bad = h.tf(1);
+    bad.user_token = h.tokens[2];
+    assert!(h.exec(instruction(bad, ix::Redeem {}), 1).is_err());
+    let mut bad = h.tf(1);
+    bad.trader = h.trader_key(2);
+    assert!(h.exec(instruction(bad, ix::Redeem {}), 1).is_err());
+    assert_eq!(
+        h.svm.get_account(&h.vault).unwrap().lamports,
+        before.lamports
+    );
+    h.finish(true);
 }

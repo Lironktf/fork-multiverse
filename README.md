@@ -8,7 +8,7 @@ See the [development workflow](fork/docs/integration.md),
 
 For today's demo, follow the [devnet walkthrough](fork/docs/devnet.md).
 Use **Trade → Available markets → Open in graph & trade**, then connect Phantom,
-get test USDC, deposit and review a buy or sell.
+deposit devnet SOL and review a buy or sell.
 
 The actual Rust program is in [`lib.rs`](fork/contracts/programs/fork-contracts/src/lib.rs),
 with [account constraints](fork/contracts/programs/fork-contracts/src/instructions.rs),

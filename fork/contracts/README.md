@@ -1,21 +1,25 @@
 # Solana conditional prediction markets
 
-The original Fork application now connects to this program through a local service.
-See [the integrated application workflow](../docs/integration.md) and
-[verification report](../docs/verification.md). Existing CLI demos below are retained.
+The app and devnet demo use **native SOL collateral** with nine-decimal lamport
+accounting. Follow [the SOL demo walkthrough](../docs/devnet.md). The Rust program
+is in [`programs/fork-contracts/src`](programs/fork-contracts/src), with backing
+and authorization tests in [`tests/market.rs`](programs/fork-contracts/tests/market.rs).
 
-An Anchor 1.1.2 demo for **B conditional on A=YES**, with an integer binary LMSR,
-legacy SPL Token collateral, immutable Gemini instrument bindings, a trusted
-oracle adapter, real LiteSVM tests and an optional paper-trading research bot.
-Everything here belongs to the contracts workspace; the separate application
-is untouched. No mainnet or real-money deployment has been performed.
+An Anchor 1.1.2 program for **B conditional on A=YES**, with an integer binary
+LMSR, immutable Gemini instrument bindings and a trusted oracle adapter. Native
+SOL accounts hold actual lamports; the app never mints collateral. Legacy
+six-decimal configurations remain separate for existing claims and historical
+CLI test fixtures. No mainnet deployment has been performed.
 
 If A=YES, winning B shares pay one collateral unit. If A=NO or either event is
 INVALID, the market voids and every trader receives their entire deposited
 collateral, even after profitable exits, losing exits, partial closes or
 reversals. Rounding reserves are refunded too. Network fees are separate.
 
-## Live Gemini demo — user-selected contracts
+## Historical CLI fixture — custom test collateral
+
+The CLI workflow below is retained for legacy contract testing. For the current
+SOL app, use [the SOL walkthrough](../docs/devnet.md).
 
 In terminal 1, from `fork/contracts`:
 

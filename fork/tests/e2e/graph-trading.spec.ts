@@ -42,7 +42,7 @@ test.beforeEach(async ({ page }) => {
           rpc: "https://api.devnet.solana.com",
           genesis: DEVNET_GENESIS,
           config: "fixture-config",
-          mint: "fixture-mint",
+          mint: "So11111111111111111111111111111111111111112",
         },
       },
     }),
@@ -86,6 +86,22 @@ test("opening an existing market selects its exact graph world without bot contr
   await expect(page.getByTestId("strategy-bot")).toHaveCount(0);
   await expect(page.getByTestId("if-then-buy")).toHaveCount(0);
   await expect(page.getByTestId("open-rules")).toHaveCount(0);
+  // Let graph navigation settle; the selected target must remain beside Trade.
+  await expect
+    .poll(async () => {
+      const target = await page
+        .locator('[data-type="target"]')
+        .last()
+        .boundingBox();
+      const panel = await page.getByTestId("positions").boundingBox();
+      return (
+        !!target &&
+        !!panel &&
+        target.x > 340 &&
+        target.x + target.width < panel.x
+      );
+    })
+    .toBe(true);
   await page.screenshot({ path: "test-results/graph-trade-desktop.png" });
 });
 

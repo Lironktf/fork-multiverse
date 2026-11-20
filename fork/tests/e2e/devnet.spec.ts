@@ -69,10 +69,6 @@ test("devnet wallet deposits, buys, sells through the graph-linked Trade tab", a
       )
     ).value.err,
   ).toBeNull();
-  const faucet = await request.post("/api/solana/faucet", {
-    data: { owner: owner.toBase58() },
-  });
-  expect(faucet.ok(), await faucet.text()).toBeTruthy();
   await page.addInitScript(
     ({ genesis, address }) => {
       localStorage.clear();
@@ -96,17 +92,21 @@ test("devnet wallet deposits, buys, sells through the graph-linked Trade tab", a
   await openTradeMarket(page);
   const trading = page.getByTestId("trading");
   await expect(trading).toContainText("devnet", { timeout: 30_000 });
-  await trading.getByLabel("Deposit amount").fill("100");
+  await trading.getByLabel("Deposit amount").fill("0.01");
   wallet.reject();
-  await trading.getByRole("button", { name: "Deposit", exact: true }).click();
+  await trading
+    .getByRole("button", { name: "Deposit SOL", exact: true })
+    .click();
   await expect(trading.getByRole("alert")).toContainText("rejected", {
     timeout: 45_000,
   });
-  await trading.getByRole("button", { name: "Deposit", exact: true }).click();
+  await trading
+    .getByRole("button", { name: "Deposit SOL", exact: true })
+    .click();
   await expect(trading.locator("a[data-signature]")).toHaveCount(1, {
     timeout: 60_000,
   });
-  await trading.getByLabel("Trade shares").fill("2");
+  await trading.getByLabel("Trade shares").fill("0.002");
   await trading.getByRole("button", { name: "Review trade" }).click();
   await expect(trading.getByTestId("chain-quote")).toContainText(
     "Includes LP fee",
@@ -117,7 +117,7 @@ test("devnet wallet deposits, buys, sells through the graph-linked Trade tab", a
     timeout: 60_000,
   });
   await trading.getByLabel("Trade direction").selectOption("sell");
-  await trading.getByLabel("Trade shares").fill("1");
+  await trading.getByLabel("Trade shares").fill("0.001");
   await trading.getByRole("button", { name: "Review trade" }).click();
   await expect(trading.getByTestId("chain-quote")).toBeVisible({
     timeout: 45_000,

@@ -34,7 +34,7 @@ async function proxy(
       backend.protocol !== "http:"
     )
       throw new Error(
-        "Mock collateral service is available only on localhost.",
+        "The trading service is available only on localhost.",
       );
     const origin = req.headers.get("origin");
     if (origin && origin !== browserUrl.origin)
@@ -42,15 +42,9 @@ async function proxy(
     const { path } = await context.params;
     if (
       path.length !== 1 ||
-      ![
-        "config",
-        "catalog",
-        "instrument",
-        "markets",
-        "refresh",
-        "faucet",
-        "strategy",
-      ].includes(path[0])
+      !["config", "catalog", "instrument", "markets", "refresh"].includes(
+        path[0],
+      )
     )
       throw new Error("Unknown local endpoint.");
     const response = await fetch(

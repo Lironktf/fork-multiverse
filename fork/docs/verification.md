@@ -1,3 +1,10 @@
+# Current verification — November 20, 2026
+
+The current demo uses native SOL collateral and graph-linked wallet trading.
+See [the current walkthrough](devnet.md) and [PR review notes](pr-review.md).
+The November 19 evidence below is historical: its mock collateral, older UI,
+addresses and test totals do not describe the current demo.
+
 # Integration verification — November 19, 2026
 
 ## Consolidated project review

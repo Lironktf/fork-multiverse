@@ -31,10 +31,10 @@ test("real devnet market opens in graph and reads wallet balances without sendin
   const trading = page.getByTestId("trading");
   await expect(trading).toContainText("Open for trading", { timeout: 30000 });
   await expect(trading.getByTestId("balance-wallet-collateral")).toHaveText(
-    "0.000000",
+    "0.000000000",
   );
   await expect(
-    trading.getByRole("button", { name: "Get test USDC", exact: true }),
+    trading.getByRole("link", { name: "Get devnet SOL", exact: true }),
   ).toBeVisible();
   await expect(
     trading.getByRole("button", { name: "Review trade", exact: true }),

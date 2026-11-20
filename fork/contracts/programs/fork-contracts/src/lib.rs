@@ -98,6 +98,35 @@ pub mod fork_contracts {
         c.bump = ctx.bumps.config;
         Ok(())
     }
+    pub fn initialize_sol_config(
+        ctx: Context<InitializeSolConfig>,
+        reporter: Pubkey,
+        pause_authority: Pubkey,
+        max_trade: u64,
+        max_deposits: u64,
+    ) -> Result<()> {
+        require!(
+            reporter != Pubkey::default() && pause_authority != Pubkey::default(),
+            E::Binding
+        );
+        require!(
+            max_trade > 0
+                && max_trade <= math::MAX_B
+                && max_deposits >= max_trade
+                && max_deposits <= math::MAX_Q,
+            E::Math
+        );
+        let c = &mut ctx.accounts.config;
+        c.creator = ctx.accounts.admin.key();
+        c.admin = c.creator;
+        c.reporter = reporter;
+        c.pause_authority = pause_authority;
+        c.mint = ctx.accounts.mint.key();
+        c.max_trade = max_trade;
+        c.max_deposits = max_deposits;
+        c.bump = ctx.bumps.config;
+        Ok(())
+    }
     pub fn propose_admin(ctx: Context<Administer>, next: Pubkey) -> Result<()> {
         require_keys_eq!(
             ctx.accounts.authority.key(),
@@ -350,7 +379,7 @@ pub mod fork_contracts {
                 },
             ),
             amount,
-            6,
+            ctx.accounts.mint.decimals,
         )
     }
     pub fn fund_lp(ctx: Context<LpFunds>, amount: u64) -> Result<()> {
@@ -379,7 +408,7 @@ pub mod fork_contracts {
                 },
             ),
             amount,
-            6,
+            ctx.accounts.mint.decimals,
         )
     }
     pub fn quote(ctx: Context<Quote>, yes: bool, buy: bool, amount: u64) -> Result<u64> {
@@ -566,6 +595,10 @@ fn withdraw<'info>(
             &[seeds],
         ),
         amount,
-        6,
+        if *mint.key == anchor_spl::token::spl_token::native_mint::ID {
+            9
+        } else {
+            6
+        },
     )
 }

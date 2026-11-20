@@ -33,12 +33,28 @@ pub struct InitializeConfig<'info> {
     pub system_program: Program<'info, System>,
 }
 
+/// Native SOL is the only collateral allowed in the current application.
+#[derive(Accounts)]
+pub struct InitializeSolConfig<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(init, payer = admin, space = 8 + Config::INIT_SPACE,
+        seeds = [b"config-sol", admin.key().as_ref()], bump)]
+    pub config: Box<Account<'info, Config>>,
+    #[account(address = anchor_spl::token::spl_token::native_mint::ID @ E::Binding,
+        constraint = mint.decimals == 9 @ E::Binding,
+        constraint = mint.mint_authority.is_none() @ E::Binding,
+        constraint = mint.freeze_authority.is_none() @ E::Binding)]
+    pub mint: Box<Account<'info, Mint>>,
+    pub system_program: Program<'info, System>,
+}
+
 #[derive(Accounts)]
 pub struct Administer<'info> {
     pub authority: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"config", config.creator.as_ref()],
+        seeds = [config.seed(), config.creator.as_ref()],
         bump = config.bump,
     )]
     pub config: Box<Account<'info, Config>>,
@@ -50,7 +66,7 @@ pub struct RegisterEvent<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
     #[account(
-        seeds = [b"config", config.creator.as_ref()],
+        seeds = [config.seed(), config.creator.as_ref()],
         bump = config.bump,
         has_one = admin,
     )]
@@ -70,7 +86,7 @@ pub struct RegisterEvent<'info> {
 pub struct Report<'info> {
     pub reporter: Signer<'info>,
     #[account(
-        seeds = [b"config", config.creator.as_ref()],
+        seeds = [config.seed(), config.creator.as_ref()],
         bump = config.bump,
         has_one = reporter @ E::Unauthorized,
     )]
@@ -89,7 +105,7 @@ pub struct CreateMarket<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
     #[account(
-        seeds = [b"config", config.creator.as_ref()],
+        seeds = [config.seed(), config.creator.as_ref()],
         bump = config.bump,
         has_one = admin,
         has_one = mint,
@@ -127,7 +143,7 @@ pub struct CreateMarket<'info> {
 #[derive(Accounts)]
 pub struct SyncMarket<'info> {
     #[account(
-        seeds = [b"config", config.creator.as_ref()],
+        seeds = [config.seed(), config.creator.as_ref()],
         bump = config.bump,
     )]
     pub config: Box<Account<'info, Config>>,
@@ -182,7 +198,7 @@ pub struct OpenLp<'info> {
 pub struct Trade<'info> {
     pub owner: Signer<'info>,
     #[account(
-        seeds = [b"config", config.creator.as_ref()],
+        seeds = [config.seed(), config.creator.as_ref()],
         bump = config.bump,
     )]
     pub config: Box<Account<'info, Config>>,
@@ -213,7 +229,7 @@ pub struct Trade<'info> {
 pub struct TraderFunds<'info> {
     pub owner: Signer<'info>,
     #[account(
-        seeds = [b"config", config.creator.as_ref()],
+        seeds = [config.seed(), config.creator.as_ref()],
         bump = config.bump,
     )]
     pub config: Box<Account<'info, Config>>,
@@ -260,7 +276,7 @@ pub struct TraderFunds<'info> {
 pub struct LpFunds<'info> {
     pub owner: Signer<'info>,
     #[account(
-        seeds = [b"config", config.creator.as_ref()],
+        seeds = [config.seed(), config.creator.as_ref()],
         bump = config.bump,
     )]
     pub config: Box<Account<'info, Config>>,
@@ -307,7 +323,7 @@ pub struct LpFunds<'info> {
 pub struct Quote<'info> {
     pub owner: Signer<'info>,
     #[account(
-        seeds = [b"config", config.creator.as_ref()],
+        seeds = [config.seed(), config.creator.as_ref()],
         bump = config.bump,
     )]
     pub config: Box<Account<'info, Config>>,

@@ -10,9 +10,10 @@ import {
 } from "@solana/web3.js";
 import { BN, Program } from "@anchor-lang/core";
 import {
-  createMint,
+  NATIVE_MINT,
+  createSyncNativeInstruction,
+  getAccount,
   getOrCreateAssociatedTokenAccount,
-  mintTo,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { createHash } from "node:crypto";
@@ -85,11 +86,11 @@ for (const outcome of ["void", "settledYes", "settledNo"] as const) {
         (await connection.confirmTransaction(sig, "confirmed")).value.err,
       ).toBeNull();
     }
-    const mint = await createMint(connection, admin, admin.publicKey, null, 6);
-    const config = pda("config", admin.publicKey);
+    const mint = NATIVE_MINT;
+    const config = pda("config-sol", admin.publicKey);
     await send(
       await program.methods
-        .initializeConfig(
+        .initializeSolConfig(
           admin.publicKey,
           admin.publicKey,
           unit(1000),
@@ -171,15 +172,19 @@ for (const outcome of ["void", "settledYes", "settledNo"] as const) {
     const userToken = (
       await getOrCreateAssociatedTokenAccount(connection, admin, mint, owner)
     ).address;
-    await mintTo(connection, admin, mint, lpToken, admin, BigInt(80_000_000));
-    await mintTo(
-      connection,
-      admin,
-      mint,
-      userToken,
-      admin,
-      BigInt(100_000_000),
-    );
+    for (const [account, lamports] of [
+      [lpToken, 80_000_000],
+      [userToken, 100_000_000],
+    ] as const) {
+      await send(
+        SystemProgram.transfer({
+          fromPubkey: admin.publicKey,
+          toPubkey: account,
+          lamports,
+        }),
+      );
+      await send(createSyncNativeInstruction(account));
+    }
     await send(
       await program.methods
         .openLp()
@@ -330,19 +335,17 @@ for (const outcome of ["void", "settledYes", "settledNo"] as const) {
     await page.keyboard.press("Escape");
     await openTradeMarket(page);
     const trading = page.getByTestId("trading");
-    const display = `${Math.floor(expected.toNumber() / 1e6)}.${(expected.toNumber() % 1e6).toString().padStart(6, "0")}`;
+    const display = `${Math.floor(expected.toNumber() / 1e9)}.${(expected.toNumber() % 1e9).toString().padStart(9, "0")}`;
+    const walletBefore = await connection.getBalance(owner);
+    const tokenBefore = (await getAccount(connection, userToken)).amount;
     await expect(trading.getByTestId("balance-withdrawable")).toHaveText(
       display,
     );
     await trading
       .getByRole("button", { name: /^Withdraw (refund|balance)$/ })
       .click();
-    await expect(trading.getByTestId("balance-wallet-collateral")).toHaveText(
-      display,
-      { timeout: 30_000 },
-    );
     await expect(trading.getByTestId("balance-withdrawable")).toHaveText(
-      "0.000000",
+      "0.000000000",
     );
     await expect(
       trading.getByRole("button", { name: /^Withdraw (refund|balance)$/ }),
@@ -360,6 +363,14 @@ for (const outcome of ["void", "settledYes", "settledNo"] as const) {
         })
       )?.meta?.err,
     ).toBeNull();
+    const confirmed = await connection.getTransaction(signature!, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+    expect(await connection.getBalance(owner)).toBe(
+      walletBefore + expected.toNumber() - confirmed!.meta!.fee,
+    );
+    expect((await getAccount(connection, userToken)).amount).toBe(tokenBefore);
     mkdirSync(".data", { recursive: true });
     writeFileSync(
       `.data/redemption-${outcome}.json`,

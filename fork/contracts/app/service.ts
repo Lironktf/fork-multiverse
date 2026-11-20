@@ -15,15 +15,10 @@ import {
   SystemProgram,
   TransactionInstruction,
 } from "@solana/web3.js";
-import {
-  createMint,
-  getOrCreateAssociatedTokenAccount,
-  mintTo,
-  TOKEN_PROGRAM_ID,
-} from "@solana/spl-token";
+import { NATIVE_MINT, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { makeClient, pda, BN, PROGRAM_ID } from "../client/anchor.js";
 import { validateNetwork } from "../client/network.js";
-import { strategyForWallet } from "../research/live-strategy.js";
+import { nativeSolAccount } from "../client/native-sol.js";
 import { requiredSubsidy } from "../research/lmsr.js";
 import { catalogPage } from "../demo/catalog.js";
 import {
@@ -57,7 +52,7 @@ if (devnet && (!process.env.SIGNER_PATH || process.env.ENABLE_DEVNET !== "yes"))
 const directory = resolve(
   process.env.FORK_APP_DIR ??
     process.env.FORK_LOCAL_DIR ??
-    (devnet ? ".local/devnet-app" : ".local/app"),
+    (devnet ? ".local/devnet-sol" : ".local/sol-app"),
 );
 mkdirSync(directory, { recursive: true, mode: 0o700 });
 const keyPath =
@@ -73,7 +68,7 @@ if (!existsSync(keyPath))
   writeFileSync(keyPath, JSON.stringify([...admin.secretKey]), { mode: 0o600 });
 const client = makeClient(admin, rpc);
 const { program, connection, send, local } = client;
-const config = pda("config", admin.publicKey);
+const config = pda("config-sol", admin.publicKey);
 // A single upstream gate also covers rules documents and concurrent selectors.
 let sourceQueue: Promise<unknown> = Promise.resolve();
 let lastSourceCall = 0;
@@ -116,7 +111,7 @@ const transact = async (
   log("transaction", { label, signature });
   return signature;
 };
-const units = (n: number) => new BN(n * 1_000_000);
+const units = (n: number) => new BN(n * 1_000_000_000);
 let markets: MarketDescriptor[] = [];
 let mint: PublicKey;
 let genesis: string;
@@ -165,6 +160,10 @@ async function initialize() {
         "Stale application session: genesis/program/IDL changed. Use a new FORK_LOCAL_DIR.",
       );
     mint = new PublicKey(saved.mint);
+    if (!mint.equals(NATIVE_MINT))
+      throw new Error(
+        "Legacy collateral session. Use a new SOL app directory.",
+      );
     markets = saved.markets;
     const c = await program.account.config.fetch(config);
     if (!c.mint.equals(mint) || !c.admin.equals(admin.publicKey))
@@ -187,18 +186,18 @@ async function initialize() {
       throw new Error(
         "Configuration authority changed; cannot resume initialization.",
       );
-    mint =
-      existing?.mint ??
-      (await createMint(connection, admin, admin.publicKey, null, 6));
+    mint = NATIVE_MINT;
+    if (existing && !existing.mint.equals(NATIVE_MINT))
+      throw new Error("SOL config has incompatible collateral.");
     if (!existing)
       await transact(
         "initialize config",
         await program.methods
-          .initializeConfig(
+          .initializeSolConfig(
             admin.publicKey,
             admin.publicKey,
+            units(10),
             units(1000),
-            units(1_000_000),
           )
           .accountsStrict({
             admin: admin.publicKey,
@@ -373,7 +372,7 @@ async function prepare(body: {
     await transact(
       "create conditional market",
       await program.methods
-        .createMarketForBudget(units(80), new BN(0))
+        .createMarketForBudget(units(0.1), new BN(0))
         .accountsStrict({
           admin: admin.publicKey,
           config,
@@ -390,14 +389,6 @@ async function prepare(body: {
   }
   if (!body.communityFunding) {
     const lp = pda("lp", market, admin.publicKey);
-    const userToken = (
-      await getOrCreateAssociatedTokenAccount(
-        connection,
-        admin,
-        mint,
-        admin.publicKey,
-      )
-    ).address;
     if (!(await program.account.lp.fetchNullable(lp)))
       await transact(
         "open LP",
@@ -421,16 +412,13 @@ async function prepare(body: {
         }).toString(),
       ).sub(state.lpDeposits);
       if (needed.gt(new BN(0))) {
-        await mintTo(
+        const native = await nativeSolAccount(
           connection,
-          admin,
-          mint,
-          userToken,
-          admin,
+          admin.publicKey,
           BigInt(needed.toString()),
         );
-        await transact(
-          "fund mock LP subsidy",
+        const signature = await send([
+          ...native.open,
           await program.methods
             .fundLp(needed)
             .accountsStrict({
@@ -442,11 +430,13 @@ async function prepare(body: {
               lp,
               mint,
               vault,
-              userToken,
+              userToken: native.address,
               tokenProgram: TOKEN_PROGRAM_ID,
             })
             .instruction(),
-        );
+          native.close,
+        ]);
+        log("transaction", { label: "fund SOL liquidity", signature });
       }
       await transact(
         "start market",
@@ -562,38 +552,6 @@ async function refresh(m: MarketDescriptor) {
     );
   return { checkedAt: new Date().toISOString() };
 }
-async function faucet(ownerText: string) {
-  const owner = new PublicKey(ownerText);
-  const signatures: string[] = [];
-  if (local && (await connection.getBalance(owner)) < 100_000_000) {
-    const signature = await connection.requestAirdrop(owner, 1_000_000_000);
-    const result = await connection.confirmTransaction(signature, "confirmed");
-    if (result.value.err) throw new Error("SOL faucet failed.");
-    signatures.push(signature);
-  }
-  const ata = await getOrCreateAssociatedTokenAccount(
-    connection,
-    admin,
-    mint,
-    owner,
-  );
-  if (ata.amount < 1000_000_000n)
-    signatures.push(
-      await mintTo(
-        connection,
-        admin,
-        mint,
-        ata.address,
-        admin,
-        1000_000_000n - ata.amount,
-      ),
-    );
-  log("faucet", { owner: ownerText, signatures });
-  return {
-    signatures,
-    needsSol: (await connection.getBalance(owner)) < 10_000_000,
-  };
-}
 await initialize();
 // Serialize privileged operations and polling to avoid duplicate registration/report races.
 let queue: Promise<unknown> = Promise.resolve();
@@ -663,18 +621,6 @@ createServer(async (req, res) => {
       );
     else if (req.method === "POST" && url.pathname === "/refresh")
       data = await serial(() => refresh(descriptor(body.market)));
-    else if (req.method === "POST" && url.pathname === "/strategy") {
-      const market = descriptor(body.market);
-      data = await serial(() =>
-        strategyForWallet(
-          client,
-          new PublicKey(market.address),
-          new PublicKey(String(body.owner)),
-          sourceFetch,
-        ),
-      );
-    } else if (req.method === "POST" && url.pathname === "/faucet")
-      data = await serial(() => faucet(String(body.owner)));
     else {
       res.statusCode = 404;
       throw new Error("Unknown local endpoint.");
@@ -690,7 +636,7 @@ createServer(async (req, res) => {
   }
 }).listen(Number(process.env.FORK_SERVICE_PORT ?? "8787"), "127.0.0.1", () =>
   console.log(
-    `Fork ${local ? "localnet" : "devnet"} service: http://127.0.0.1:${process.env.FORK_SERVICE_PORT ?? "8787"} (test collateral, live Gemini, real oracle polling)`,
+    `Fork ${local ? "localnet" : "devnet"} service: http://127.0.0.1:${process.env.FORK_SERVICE_PORT ?? "8787"} (SOL collateral, live Gemini, real oracle polling)`,
   ),
 );
 let polling = false;
