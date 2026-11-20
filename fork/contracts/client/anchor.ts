@@ -37,11 +37,10 @@ export function makeClient(
 ) {
   const u = new URL(rpc);
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
-  if (
-    !local &&
-    !(u.protocol === "https:" && u.hostname === "api.devnet.solana.com")
-  )
-    throw new Error("Only local validator or official devnet RPC supported");
+  // Devnet only: the official endpoint, or Helius' devnet endpoint (keyed, server-side only).
+  const devnetHosts = ["api.devnet.solana.com", "devnet.helius-rpc.com"];
+  if (!local && !(u.protocol === "https:" && devnetHosts.includes(u.hostname)))
+    throw new Error("Only local validator or devnet RPC supported");
   if (!local && process.env.ENABLE_DEVNET !== "yes")
     throw new Error("Set ENABLE_DEVNET=yes for explicit devnet execution");
   const connection = new Connection(rpc, "confirmed");
