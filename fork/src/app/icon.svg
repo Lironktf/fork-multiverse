@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- FORK mark: an original spider-web glyph split across three offset "realities" (red / cyan / white). -->
+  <defs>
+    <g id="web" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <!-- spokes -->
+      <path d="M32 32 L32 6 M32 32 L54.5 19 M32 32 L54.5 45 M32 32 L32 58 M32 32 L9.5 45 M32 32 L9.5 19" stroke-width="2.4"/>
+      <!-- sagging rings -->
+      <path d="M32 21 Q37 24.5 41.5 26.5 Q41 32 41.5 37.5 Q37 39.5 32 43 Q27 39.5 22.5 37.5 Q23 32 22.5 26.5 Q27 24.5 32 21 Z" stroke-width="2.2"/>
+      <path d="M32 11 Q41.5 17 50.5 21.5 Q49 32 50.5 42.5 Q41.5 47 32 53 Q22.5 47 13.5 42.5 Q15 32 13.5 21.5 Q22.5 17 32 11 Z" stroke-width="2.2"/>
+    </g>
+    <g id="spider">
+      <ellipse cx="32" cy="34.5" rx="3.6" ry="4.6"/>
+      <circle cx="32" cy="28.6" r="2.6"/>
+      <path d="M29 31 L23.5 26.5 M29 33.5 L22.5 32.5 M29 36 L23 39.5 M29.5 38 L25.5 43.5 M35 31 L40.5 26.5 M35 33.5 L41.5 32.5 M35 36 L41 39.5 M34.5 38 L38.5 43.5" fill="none" stroke-width="1.8" stroke-linecap="round"/>
+    </g>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0b0b0e"/>
+  <g opacity="0.85">
+    <use href="#web" stroke="#ff3b5c" transform="translate(-1.6 0.6)"/>
+    <use href="#web" stroke="#2fd9ff" transform="translate(1.6 -0.6)"/>
+  </g>
+  <use href="#web" stroke="#f2f2f4"/>
+  <g transform="translate(-1.4 0)" fill="#ff3b5c" stroke="#ff3b5c"><use href="#spider"/></g>
+  <g transform="translate(1.4 0)" fill="#2fd9ff" stroke="#2fd9ff"><use href="#spider"/></g>
+  <g fill="#0b0b0e" stroke="#f2f2f4"><use href="#spider" stroke="#f2f2f4" fill="#f2f2f4"/></g>
+</svg>

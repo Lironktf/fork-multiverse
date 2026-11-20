@@ -49,7 +49,6 @@ next-env.d.ts
 .next-devnet-prod/
 
 # Generated from fork-contracts (npm run app:sync)
-/src/lib/contracts/generated/
 
 # Safe public configuration template
 !.env.example

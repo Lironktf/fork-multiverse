@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 
-export const ProviderMode = z.enum(["mixed", "claude", "codex"]);
+export const ProviderMode = z.enum(["mixed", "claude", "codex", "grok"]);
 export type ProviderMode = z.infer<typeof ProviderMode>;
 
 export const ProbabilityKind = z.enum(["MARKET", "MODEL", "DEMO"]);
@@ -60,7 +60,7 @@ export const ForkEvent = z.object({
   source: EventSource,
   externalMarketId: z.string().nullable().default(null),
   eventType: z.enum(["binary", "categorical"]),
-  possibleOutcomes: z.array(z.string()).min(2),
+  possibleOutcomes: z.array(z.string()),
   resolutionCriteria: z.string().default(""),
   resolutionDate: z.string().nullable().default(null),
   /** Free-form source metadata (urls, tickers, illustrative baselines). */
@@ -68,6 +68,8 @@ export const ForkEvent = z.object({
     .object({
       url: z.string().optional(),
       ticker: z.string().optional(),
+      sourceCategory: z.string().optional(),
+      series: z.string().optional(),
       /** For categorical gemini events: outcome -> contract id */
       contractIds: z.record(z.string(), z.string()).optional(),
       /** Illustrative baseline P(target outcome) for demo events */
@@ -78,12 +80,16 @@ export const ForkEvent = z.object({
       proposedBy: z.string().optional(),
       volumeUsd: z.number().nullable().optional(),
       tags: z.array(z.string()).optional(),
+      /** search only: why this event matched the query (e.g. outcome “Pedro Sánchez”) */
+      match: z.string().optional(),
+      /** search only: matched through a related topic, not the query itself */
+      related: z.boolean().optional(),
     })
     .default({}),
   /** Latest snapshots per outcome (only for live market events) */
   snapshots: z.array(MarketSnapshot).optional(),
   fetchedAt: z.string().optional(),
-});
+}).refine((event) => event.source === "gemini" || event.possibleOutcomes.length >= 2, { path: ["possibleOutcomes"], message: "Choose at least two outcomes" });
 export type ForkEvent = z.infer<typeof ForkEvent>;
 
 /** A target is an (event, outcome) pair whose probability we forecast. */
@@ -177,7 +183,7 @@ export type AnalystOutput = z.infer<typeof AnalystOutput>;
 export const ModelRun = z.object({
   role: ModelRole,
   model: z.string(), // e.g. "claude-sonnet-5-5 via claude -p" or "demo-fixture"
-  provider: z.enum(["claude", "codex", "demo"]).optional(),
+  provider: z.enum(["claude", "codex", "grok", "demo"]).optional(),
   status: z.enum(["queued", "running", "done", "failed"]),
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
@@ -209,7 +215,7 @@ export const Forecast = z.object({
   verseId: z.string(),
   targetEventId: z.string(),
   targetOutcome: z.string(),
-  engine: z.enum(["claude-cli", "codex-cli", "multi-cli", "demo"]),
+  engine: z.enum(["claude-cli", "codex-cli", "grok-cli", "multi-cli", "demo"]),
   kind: ProbabilityKind, // MODEL or DEMO
   baselineProbability: z.number().nullable(),
   baselineKind: ProbabilityKind.nullable(),
@@ -236,5 +242,7 @@ export const NextForkSuggestion = z.object({
   /** model-estimated P(target | outcome) per outcome — used for ranking only */
   conditional: z.array(z.object({ outcome: z.string(), probability: z.number() })),
   swing: z.number(),
+  /** which model families proposed this question (parallel next-fork search) */
+  proposedBy: z.array(z.string()).optional(),
 });
 export type NextForkSuggestion = z.infer<typeof NextForkSuggestion>;

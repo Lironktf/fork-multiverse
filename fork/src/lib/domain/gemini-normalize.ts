@@ -31,6 +31,7 @@ export interface RawEvent {
   description?: string | null;
   type: "binary" | "categorical";
   category?: string;
+  series?: string | null;
   subcategory?: unknown;
   ticker: string;
   status: string;
@@ -106,8 +107,10 @@ export function normalizeEvent(raw: RawEvent, fetchedAt: number): ForkEvent {
   const id = `gemini:${raw.ticker}`;
   const volumeUsd = num(raw.volume ?? null);
   const liquidityUsd = num(raw.liquidity ?? null);
-  const contracts = (raw.contracts ?? []).filter((c) => c.status !== "settled" && c.status !== "invalid");
+  const contracts = (Array.isArray(raw.contracts) ? raw.contracts : [])
+    .filter((c) => c && typeof c.label === "string" && c.label.trim() && c.status !== "settled" && c.status !== "invalid");
   const first = contracts[0];
+  const tags = Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === "string") : [];
   const resolution = first ? richText(first.description).trim() : "";
   const base = {
     id,
@@ -120,7 +123,7 @@ export function normalizeEvent(raw: RawEvent, fetchedAt: number): ForkEvent {
     resolutionDate: raw.expiryDate ?? null,
     fetchedAt: at,
   };
-  if (raw.type === "binary" || contracts.length <= 1) {
+  if (raw.type === "binary") {
     const yes = snapshotFromPrices(id, "YES", first?.prices, at, volumeUsd, liquidityUsd);
     return {
       ...base,
@@ -129,9 +132,11 @@ export function normalizeEvent(raw: RawEvent, fetchedAt: number): ForkEvent {
       metadata: {
         url: `https://www.gemini.com/predictions/${raw.ticker}`,
         ticker: raw.ticker,
+        sourceCategory: raw.category,
         contractIds: first ? { YES: first.id } : undefined,
         volumeUsd,
-        tags: [],
+        series: raw.series ?? undefined,
+        tags,
       },
       snapshots: [yes],
     };
@@ -143,9 +148,11 @@ export function normalizeEvent(raw: RawEvent, fetchedAt: number): ForkEvent {
     metadata: {
       url: `https://www.gemini.com/predictions/${raw.ticker}`,
       ticker: raw.ticker,
+      sourceCategory: raw.category,
       contractIds: Object.fromEntries(contracts.map((c) => [c.label, c.id])),
       volumeUsd,
-      tags: [],
+      series: raw.series ?? undefined,
+      tags,
     },
     snapshots: contracts.map((c) => snapshotFromPrices(id, c.label, c.prices, at, volumeUsd, liquidityUsd)),
   };

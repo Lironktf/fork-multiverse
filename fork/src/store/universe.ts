@@ -5,6 +5,7 @@
  * transition, panels) lives in ./ui.ts so graph physics never couples to it.
  */
 import { create } from "zustand";
+import { SCENARIO_LIMIT } from "@/lib/domain/scenario";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { Assumption, Forecast, ForkEvent, ProviderMode, TargetRef, Verse } from "@/lib/domain/types";
 import { targetKey } from "@/lib/domain/types";
@@ -81,7 +82,7 @@ interface UniverseState {
   resetUniverse: () => void;
 }
 
-export const BASKET_LIMIT = 8;
+export const BASKET_LIMIT = SCENARIO_LIMIT;
 const uid = () => Math.random().toString(36).slice(2, 10);
 const DEFAULT_TARGET: TargetRef = { eventId: DEMO_TARGETS[0].id, outcome: "YES" };
 

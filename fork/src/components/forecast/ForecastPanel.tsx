@@ -13,14 +13,17 @@ import { baselineFor, forkDisagreement, isTerminal, requestForecast, requestNext
 import { ORIGIN_ID } from "@/lib/domain/verse";
 import { ProbabilityDisplay, RangeTrack } from "./ProbabilityDisplay";
 import { Onchain } from "@/components/solana/Onchain";
+import { IfThenBuy } from "@/components/solana/IfThenBuy";
 import { MarketContext } from "./MarketContext";
+import { OddsHistory } from "./OddsHistory";
 
 const ROLE_ORDER: ModelRole[] = ["causal", "empirical", "market", "skeptic"];
 
 /** Which model family produced an analysis — kept visible so numbers stay attributed. */
-export function ProviderTag({ p }: { p: "claude" | "codex" }) {
+const PROVIDER_TITLE = { claude: "Anthropic Claude via claude -p", codex: "OpenAI Codex via codex exec", grok: "xAI Grok via grok -p" } as const;
+export function ProviderTag({ p }: { p: "claude" | "codex" | "grok" }) {
   return (
-    <span className="tag tag-custom" style={{ height: 13, fontSize: 8 }} title={p === "claude" ? "Anthropic Claude via claude -p" : "OpenAI Codex via codex exec"}>
+    <span className="tag tag-custom" style={{ height: 13, fontSize: 8 }} title={PROVIDER_TITLE[p]}>
       {p}
     </span>
   );
@@ -64,8 +67,8 @@ function AnalysisProgress({ f }: { f: Forecast }) {
       </ul>
       <p className="mt-2 text-[10px] leading-relaxed text-ink-3">
         {f.engine === "multi-cli"
-          ? "Four role-prompted analyses run in parallel — two on Claude (claude -p), two on Codex (codex exec). Different model families, but still not independent forecasters."
-          : `Four role-prompted analyses run in parallel through the local ${f.engine === "codex-cli" ? "Codex" : "Claude"} CLI. They share a model family, so they are not independent forecasters.`}
+          ? `Research and all four role-prompted analyses run in parallel across ${[...new Set(f.modelOutputs.map((r) => r.provider).filter(Boolean))].join(", ")}. Different model families, but still not independent forecasters.`
+          : `Four role-prompted analyses run in parallel through the local ${f.engine === "codex-cli" ? "Codex" : f.engine === "grok-cli" ? "Grok" : "Claude"} CLI. They share a model family, so they are not independent forecasters.`}
       </p>
     </div>
   );
@@ -180,7 +183,14 @@ function NextFork({ verseId }: { verseId: string }) {
         {nf?.suggestions.map((s, i) => (
           <motion.li key={s.title} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="rounded-md border border-line bg-black/20 p-2.5">
             <div className="flex items-start justify-between gap-2">
-              <span className="text-[11.5px] leading-snug text-ink">{s.title}</span>
+              <span className="text-[11.5px] leading-snug text-ink">
+                {s.title}
+                {s.proposedBy?.length ? (
+                  <span className="ml-1.5 inline-flex gap-1 align-middle" title={`Independently proposed by ${s.proposedBy.join(", ")}`}>
+                    {s.proposedBy.map((p) => (p === "claude" || p === "codex" || p === "grok" ? <ProviderTag key={p} p={p} /> : null))}
+                  </span>
+                ) : null}
+              </span>
               <span className="num shrink-0 text-[10.5px] text-accent" title="Model-estimated swing between outcomes">{(s.swing * 100).toFixed(0)}pp swing</span>
             </div>
             <p className="mt-1 line-clamp-2 text-[10.5px] leading-snug text-ink-3">{s.rationale}</p>
@@ -196,7 +206,7 @@ function NextFork({ verseId }: { verseId: string }) {
           </motion.li>
         ))}
       </ul>
-      {nf?.status === "done" && <p className="mt-2 text-[9.5px] text-ink-3">{nf.engine === "demo" ? "Demonstration ranking from illustrative fixtures." : "Rough model estimates used only to rank questions."}</p>}
+      {nf?.status === "done" && <p className="mt-2 text-[9.5px] text-ink-3">{nf.engine === "demo" ? "Demonstration ranking from illustrative fixtures." : nf.engine === "multi-cli" ? "Every model family searched in parallel; questions raised by several families rank first. Rough estimates, used only to rank." : "Rough model estimates used only to rank questions."}</p>}
     </div>
   );
 }
@@ -406,6 +416,7 @@ export function ForecastPanel() {
                   </span>
                 </p>
               )}
+              {events[target.eventId]?.source === "gemini" && <OddsHistory event={events[target.eventId]} outcome={target.outcome} forecast={f} isOrigin={isOrigin} />}
               {f && (f.modelOutputs.some((r) => finalProbability(r) !== null) ? <div className="mt-3"><RangeTrack forecast={f} onPick={(r) => useUI.getState().set({ inspectRole: r })} /></div> : null)}
               {analyzing && <AnalysisProgress f={f!} />}
               {f?.status === "failed" && (
@@ -439,6 +450,7 @@ export function ForecastPanel() {
               {mode === "markets" && <MarketContext />}
               <NextFork verseId={currentVerseId} />
               {f && <Sources f={f} />}
+              <IfThenBuy />
               <Onchain />
             </motion.div>
           )}

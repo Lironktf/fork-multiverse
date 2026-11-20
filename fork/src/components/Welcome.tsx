@@ -17,7 +17,7 @@ import type { ForkEvent } from "@/lib/domain/types";
 
 const LIVE_PICKS = ["RECESSION26", "CRYPTOSTRUCT26", "FED261211", "BESTAI26"];
 
-export function Welcome() {
+export function Welcome({ openAtlas }: { openAtlas: () => void }) {
   const [searching, setSearching] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const live = useLiveEvents("", true);
@@ -47,8 +47,9 @@ export function Welcome() {
 
   return (
     <motion.div className="pointer-events-none fixed inset-0 z-20 flex flex-col" initial={{ opacity: 0 }} animate={{ opacity: leaving ? 0 : 1 }} transition={{ duration: leaving ? 0.5 : 1.2, ease: [0.22, 1, 0.36, 1] }} data-testid="welcome">
-      <div className="pointer-events-auto px-6 pt-5">
+      <div className="pointer-events-auto flex items-center gap-3 px-6 pt-5">
         <Wordmark />
+        <button type="button" className="ibtn !h-8" disabled={leaving} onClick={openAtlas}>Explore Atlas</button>
       </div>
       <div className="flex flex-1 flex-col items-center justify-center px-5 pb-[8vh]">
         {/* focal point — becomes the target node */}

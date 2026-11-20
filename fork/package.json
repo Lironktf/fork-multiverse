@@ -20,8 +20,6 @@
     "validator": "npm --prefix contracts run app:validator",
     "oracle": "npm --prefix contracts run app:serve",
     "verify": "npm run contracts:verify && npm run contracts:sync && npm run typecheck && npm run lint && npm run format:check && npm run build && npm run test:unit",
-    "predev": "npm run contracts:sync",
-    "prebuild": "npm run contracts:sync",
     "dev:devnet": "bash scripts/devnet.sh"
   },
   "dependencies": {

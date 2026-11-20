@@ -11,7 +11,8 @@ export async function GET(req: Request) {
   const q = u.searchParams.get("q")?.slice(0, 80) || undefined;
   const category = u.searchParams.get("category") || undefined;
   try {
-    const r = await searchGeminiEvents({ q, category });
+    const atlas = u.searchParams.get("view") === "atlas";
+    const r = await searchGeminiEvents({ q, category, allMarkets: atlas, curated: atlas && u.searchParams.get("catalog") !== "full" });
     return NextResponse.json({ ok: true, source: "gemini", ...r });
   } catch (e) {
     return NextResponse.json(
