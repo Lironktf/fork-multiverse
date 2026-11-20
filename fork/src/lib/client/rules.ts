@@ -17,7 +17,7 @@ export interface Rule {
   status: "armed" | "fired" | "failed" | "cancelled" | "expired";
   createdAt: string;
   executor: string;
-  labels?: { condition: string; target: string };
+  labels?: { condition: string; target: string; world?: string };
   last?: Observation;
   firedAt?: string;
   fired?: Observation;
