@@ -117,8 +117,8 @@ keypair, rebuilds and refreshes app IDL/types. Review any public-ID diff on a fr
 checkout. For an existing deployment, retain its deployment keypair/upgrade authority;
 do not accidentally deploy a new ID as a migration. Browser/service sessions pin the
 IDL hash and reject stale state; restart with a new `FORK_LOCAL_DIR` after upgrading.
-The browser integration deliberately remains localnet-only. The CLI, oracle and
-smoke flow support devnet. The smoke uses mock SPL tokens and explicitly synthetic
+The browser, CLI, oracle and smoke flow support localnet and devnet. See
+[the devnet app guide](../../docs/devnet.md) for matching service/browser settings. The smoke uses mock SPL tokens and explicitly synthetic
 outcomes; it is not a live Gemini resolution test. It requires funded test SOL and
 waits for real chain time. No devnet deployment is claimed by local test results.
 

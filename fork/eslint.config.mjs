@@ -18,6 +18,8 @@ const eslintConfig = [
       "docs/legacy/**",
       ".next/**",
       ".next-prod/**",
+      ".next-devnet/**",
+      ".next-devnet-prod/**",
       "src/lib/contracts/generated/**",
       "test-results/**",
       "playwright-report/**",

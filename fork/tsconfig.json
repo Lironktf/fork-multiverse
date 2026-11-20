@@ -25,9 +25,11 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    ".next-devnet-prod/types/**/*.ts",
+    ".next-prod/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-prod/types/**/*.ts"
+    ".next-devnet/types/**/*.ts"
   ],
   "exclude": ["node_modules", "contracts", "docs/legacy"]
 }

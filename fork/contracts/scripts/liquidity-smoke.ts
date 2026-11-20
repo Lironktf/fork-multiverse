@@ -455,7 +455,7 @@ console.log(
 while (
   ((await connection.getBlockTime(await connection.getSlot())) ?? 0) < close
 )
-  await new Promise((r) => setTimeout(r, 500));
+  await new Promise((r) => setTimeout(r, c.local ? 500 : 5000));
 const evidence: unknown[] = [];
 for (const [index, m] of markets.entries()) {
   const isVoid = !["yes", "no"].includes(m.mode);

@@ -8,6 +8,7 @@ const files = [
   "tests/e2e/solana.spec.ts",
   "tests/e2e/redemption.spec.ts",
   "tests/e2e/liquidity.spec.ts",
+  "tests/e2e/devnet.spec.ts",
   "tests/e2e/wallet-balance.spec.ts",
   "tests/unit/contracts.spec.ts",
   "scripts/format-integration.mjs",

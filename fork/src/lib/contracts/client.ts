@@ -21,6 +21,7 @@ import type { ForkContracts } from "./generated/fork_contracts";
 import type { AppConfig, MarketDescriptor } from "./generated/app-types";
 import { claimable, executionLimit, parseUnits } from "./amounts";
 import { liquidityMetrics } from "./liquidity";
+import { validateNetwork } from "./generated/network";
 
 export type Accounts = IdlAccounts<ForkContracts>;
 export const PROGRAM_ID = new PublicKey(idl.address);
@@ -34,7 +35,7 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   });
   const result = await response.json();
   if (!response.ok || !result.ok)
-    throw new Error(result.error ?? "Local Solana service unavailable.");
+    throw new Error(result.error ?? "Solana service unavailable.");
   return result.data as T;
 }
 export function validateConfig(config: AppConfig) {
@@ -45,13 +46,7 @@ export function validateConfig(config: AppConfig) {
     throw new Error(
       "Incompatible program or IDL. Run npm run app:sync in contracts and rebuild Fork.",
     );
-  if (
-    config.cluster !== "localnet" ||
-    !["127.0.0.1", "localhost", "[::1]"].includes(new URL(config.rpc).hostname)
-  )
-    throw new Error(
-      "This integration requires a local validator and mock funds.",
-    );
+  validateNetwork(config.cluster, config.rpc, config.genesis);
 }
 export function pda(...seeds: (string | PublicKey)[]) {
   return PublicKey.findProgramAddressSync(
@@ -99,7 +94,7 @@ export function marketClient(
       (await connection.getGenesisHash()) !== config.genesis
     )
       throw new Error(
-        "Wallet RPC or deployment changed. Reconnect to the configured local validator.",
+        "Wallet RPC or deployment changed. Reconnect to the configured Solana network.",
       );
   }
   async function read() {

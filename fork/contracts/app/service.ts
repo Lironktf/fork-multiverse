@@ -1,4 +1,4 @@
-/** Local development only: privileged signing never enters the Next.js bundle. */
+/** Loopback-only localnet/devnet service. Privileged signing stays outside Next.js. */
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import {
@@ -22,6 +22,8 @@ import {
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { makeClient, pda, BN, PROGRAM_ID } from "../client/anchor.js";
+import { validateNetwork } from "../client/network.js";
+import { strategyForWallet } from "../research/live-strategy.js";
 import { requiredSubsidy } from "../research/lmsr.js";
 import { catalogPage } from "../demo/catalog.js";
 import {
@@ -44,9 +46,24 @@ import type {
   MarketDescriptor,
 } from "../client/app-types.js";
 
-const directory = resolve(process.env.FORK_LOCAL_DIR ?? ".local/app");
+const rpc = process.env.RPC_URL ?? "http://127.0.0.1:8899";
+const devnet = !["localhost", "127.0.0.1", "[::1]"].includes(
+  new URL(rpc).hostname,
+);
+if (devnet && (!process.env.SIGNER_PATH || process.env.ENABLE_DEVNET !== "yes"))
+  throw new Error(
+    "Devnet service requires ENABLE_DEVNET=yes and SIGNER_PATH for the existing funded test operator.",
+  );
+const directory = resolve(
+  process.env.FORK_APP_DIR ??
+    process.env.FORK_LOCAL_DIR ??
+    (devnet ? ".local/devnet-app" : ".local/app"),
+);
 mkdirSync(directory, { recursive: true, mode: 0o700 });
-const keyPath = join(directory, "admin.keypair.json");
+const keyPath =
+  process.env.SIGNER_PATH ?? join(directory, "admin.keypair.json");
+if (process.env.SIGNER_PATH && !existsSync(keyPath))
+  throw new Error("Configured operator signer does not exist.");
 const admin = existsSync(keyPath)
   ? Keypair.fromSecretKey(
       Uint8Array.from(JSON.parse(readFileSync(keyPath, "utf8"))),
@@ -54,11 +71,8 @@ const admin = existsSync(keyPath)
   : Keypair.generate();
 if (!existsSync(keyPath))
   writeFileSync(keyPath, JSON.stringify([...admin.secretKey]), { mode: 0o600 });
-const { program, connection, send, local } = makeClient(admin);
-if (!local)
-  throw new Error(
-    "Application service only supports a local validator and mock funds.",
-  );
+const client = makeClient(admin, rpc);
+const { program, connection, send, local } = client;
 const config = pda("config", admin.publicKey);
 // A single upstream gate also covers rules documents and concurrent selectors.
 let sourceQueue: Promise<unknown> = Promise.resolve();
@@ -107,10 +121,14 @@ let markets: MarketDescriptor[] = [];
 let mint: PublicKey;
 let genesis: string;
 
+let deploymentCheckedAt = 0;
 async function verifyDeployment() {
+  if (Date.now() - deploymentCheckedAt < 30_000) return;
   const account = await connection.getAccountInfo(PROGRAM_ID);
   if (!account?.executable)
-    throw new Error("Program missing. Start npm run validator:live.");
+    throw new Error(
+      "Program missing on the configured network. Deploy it before starting the service.",
+    );
   const binary = readFileSync(
     new URL("../target/deploy/fork_contracts.so", import.meta.url),
   );
@@ -130,10 +148,12 @@ async function verifyDeployment() {
     throw new Error(
       "Stale deployed program: binary differs from target/deploy. Use a new validator ledger or explicitly redeploy; no ledger is reset automatically.",
     );
+  deploymentCheckedAt = Date.now();
 }
 async function initialize() {
-  await verifyDeployment();
   genesis = await connection.getGenesisHash();
+  validateNetwork(local ? "localnet" : "devnet", rpc, genesis);
+  await verifyDeployment();
   if (existsSync(manifestPath)) {
     const saved = JSON.parse(readFileSync(manifestPath, "utf8"));
     if (
@@ -150,12 +170,18 @@ async function initialize() {
     if (!c.mint.equals(mint) || !c.admin.equals(admin.publicKey))
       throw new Error("Configuration mismatch.");
   } else {
-    const sig = await connection.requestAirdrop(
-      admin.publicKey,
-      20_000_000_000,
-    );
-    const result = await connection.confirmTransaction(sig, "confirmed");
-    if (result.value.err) throw new Error("Local SOL funding failed.");
+    if (local) {
+      const sig = await connection.requestAirdrop(
+        admin.publicKey,
+        20_000_000_000,
+      );
+      const result = await connection.confirmTransaction(sig, "confirmed");
+      if (result.value.err) throw new Error("Local SOL funding failed.");
+    } else if ((await connection.getBalance(admin.publicKey)) < 100_000_000) {
+      throw new Error(
+        `Fund devnet operator ${admin.publicKey.toBase58()} with test SOL at https://faucet.solana.com before initialization.`,
+      );
+    }
     const existing = await program.account.config.fetchNullable(config);
     if (existing && !existing.admin.equals(admin.publicKey))
       throw new Error(
@@ -198,7 +224,7 @@ async function initialize() {
 }
 function publicConfig(): AppConfig {
   return {
-    cluster: "localnet",
+    cluster: local ? "localnet" : "devnet",
     rpc: connection.rpcEndpoint,
     genesis,
     program: PROGRAM_ID.toBase58(),
@@ -498,17 +524,48 @@ async function refresh(m: MarketDescriptor) {
     target: new PublicKey(m.target),
   };
   // Materialize status even when sources remain unresolved. Never infer a final outcome.
-  await transact(
-    "sync lifecycle",
-    await program.methods.syncMarket().accountsStrict(accounts).instruction(),
-    true,
-  );
+  const before = await program.account.market.fetch(accounts.market);
+  const events = await Promise.all([
+    program.account.externalEvent.fetch(accounts.parent),
+    program.account.externalEvent.fetch(accounts.target),
+  ]);
+  const [parentState, targetState] = events;
+  const outcome = (x: typeof parentState) => Object.keys(x.outcome)[0];
+  const a = outcome(parentState),
+    b = outcome(targetState);
+  const desired =
+    a === "no" || a === "invalid" || b === "invalid"
+      ? "void"
+      : a === "yes" && b === "yes"
+        ? "settledYes"
+        : a === "yes" && b === "no"
+          ? "settledNo"
+          : parentState.halted || targetState.halted
+            ? "halted"
+            : b !== "unresolved"
+              ? "frozen"
+              : !before.started
+                ? "funding"
+                : a === "yes"
+                  ? "active"
+                  : "pending";
+  if (
+    !["void", "settledYes", "settledNo"].includes(
+      Object.keys(before.status)[0]!,
+    ) &&
+    !(desired in before.status)
+  )
+    await transact(
+      "sync lifecycle",
+      await program.methods.syncMarket().accountsStrict(accounts).instruction(),
+      true,
+    );
   return { checkedAt: new Date().toISOString() };
 }
 async function faucet(ownerText: string) {
   const owner = new PublicKey(ownerText);
   const signatures: string[] = [];
-  if ((await connection.getBalance(owner)) < 100_000_000) {
+  if (local && (await connection.getBalance(owner)) < 100_000_000) {
     const signature = await connection.requestAirdrop(owner, 1_000_000_000);
     const result = await connection.confirmTransaction(signature, "confirmed");
     if (result.value.err) throw new Error("SOL faucet failed.");
@@ -532,7 +589,10 @@ async function faucet(ownerText: string) {
       ),
     );
   log("faucet", { owner: ownerText, signatures });
-  return { signatures };
+  return {
+    signatures,
+    needsSol: (await connection.getBalance(owner)) < 10_000_000,
+  };
 }
 await initialize();
 // Serialize privileged operations and polling to avoid duplicate registration/report races.
@@ -603,20 +663,34 @@ createServer(async (req, res) => {
       );
     else if (req.method === "POST" && url.pathname === "/refresh")
       data = await serial(() => refresh(descriptor(body.market)));
-    else if (req.method === "POST" && url.pathname === "/faucet")
+    else if (req.method === "POST" && url.pathname === "/strategy") {
+      const market = descriptor(body.market);
+      data = await serial(() =>
+        strategyForWallet(
+          client,
+          new PublicKey(market.address),
+          new PublicKey(String(body.owner)),
+          sourceFetch,
+        ),
+      );
+    } else if (req.method === "POST" && url.pathname === "/faucet")
       data = await serial(() => faucet(String(body.owner)));
     else {
       res.statusCode = 404;
       throw new Error("Unknown local endpoint.");
     }
-    res.end(JSON.stringify({ ok: true, data }));
+    res.end(
+      JSON.stringify({ ok: true, data }, (_, value) =>
+        typeof value === "bigint" ? value.toString() : value,
+      ),
+    );
   } catch (error) {
     res.statusCode = res.statusCode === 404 ? 404 : 400;
     res.end(JSON.stringify({ ok: false, error: (error as Error).message }));
   }
 }).listen(Number(process.env.FORK_SERVICE_PORT ?? "8787"), "127.0.0.1", () =>
   console.log(
-    "Fork local service: http://127.0.0.1:8787 (mock funds, live Gemini, real oracle polling)",
+    `Fork ${local ? "localnet" : "devnet"} service: http://127.0.0.1:${process.env.FORK_SERVICE_PORT ?? "8787"} (test collateral, live Gemini, real oracle polling)`,
   ),
 );
 let polling = false;

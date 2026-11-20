@@ -13,6 +13,7 @@ import {
 import { executionLimit, formatUnits } from "@/lib/contracts/amounts";
 import type {
   AppConfig,
+  StrategyResult,
   Instrument,
   MarketDescriptor,
 } from "@/lib/contracts/generated/app-types";
@@ -251,6 +252,7 @@ function Trading({
   const [state, setState] = useState<ChainState | null>(null);
   const [amount, setAmount] = useState("100");
   const [lpAmount, setLpAmount] = useState("40");
+  const [strategy, setStrategy] = useState<StrategyResult | null>(null);
   const [quantity, setQuantity] = useState("10");
   const [yes, setYes] = useState(true);
   const [buy, setBuy] = useState(true);
@@ -336,13 +338,14 @@ function Trading({
     return (
       <p className="mt-3 text-ink-3">
         Connect a Solana wallet using the original wallet button at the top
-        right. Select the configured local network in your wallet.
+        right. Select {config.cluster} in your wallet.
       </p>
     );
   return (
     <div className="mt-3 border-t border-line pt-3" data-testid="trading">
       <p className="text-[10px] text-ink-3">
-        Wallet {short(wallet.publicKey.toBase58())} · localnet · mock USDC
+        Wallet {short(wallet.publicKey.toBase58())} · {config.cluster} · mock
+        USDC
       </p>
       <div className="mt-2 flex items-center justify-between">
         <span className="text-ink">
@@ -547,8 +550,91 @@ function Trading({
           })
         }
       >
-        Get mock collateral + SOL
+        {config.cluster === "localnet"
+          ? "Get mock collateral + SOL"
+          : "Get mock collateral"}
       </button>
+      {config.cluster === "devnet" && (
+        <p className="mt-1 text-[10px] text-ink-3">
+          Devnet SOL pays network fees. Use the wallet’s Get devnet SOL button;
+          mock USDC is separate test collateral.
+        </p>
+      )}
+      <details
+        className="mt-3 rounded-md border border-line p-2"
+        data-testid="strategy-bot"
+      >
+        <summary className="cursor-pointer text-ink-2">Strategy bot</summary>
+        <p className="mt-2 text-[10px] text-ink-3">
+          Evaluates live source history, uncertainty, fees and your positions.
+          It can abstain. Proposals require your wallet signature; no unattended
+          trading.
+        </p>
+        <button
+          className={`${button} mt-2`}
+          disabled={busy || !tradable}
+          onClick={() =>
+            void run(async () => {
+              setStrategy(
+                await api<StrategyResult>("strategy", {
+                  market: market.address,
+                  owner: wallet.publicKey!.toBase58(),
+                }),
+              );
+            })
+          }
+        >
+          Evaluate strategy
+        </button>
+        {strategy && (
+          <div className="mt-2 text-[10px]" role="status">
+            <p>{strategy.reason}</p>
+            <p className="mt-1 text-ink-3">
+              {strategy.model.probability === null
+                ? "No reliable conditional estimate."
+                : `Model P(B|A): ${(strategy.model.probability * 100).toFixed(2)}%; range ${(strategy.model.lower * 100).toFixed(2)}–${(strategy.model.upper * 100).toFixed(2)}%.`}{" "}
+              Samples: {strategy.model.samples}.
+            </p>
+            {strategy.proposal && (
+              <>
+                <p className="mt-1">
+                  {strategy.proposal.buy ? "Buy" : "Sell"}{" "}
+                  {formatUnits(BigInt(strategy.proposal.amount))}{" "}
+                  {strategy.proposal.yes ? "YES" : "NO"} shares.
+                </p>
+                <button
+                  className={`${button} mt-2`}
+                  disabled={busy || !tradable}
+                  onClick={() =>
+                    void run(async () => {
+                      const p = strategy.proposal!;
+                      if (Date.now() / 1000 - strategy.now > 30)
+                        throw new Error("Strategy expired. Evaluate it again.");
+                      const quantity = formatUnits(BigInt(p.amount));
+                      const fresh = await client.quote(p.yes, p.buy, quantity);
+                      if (
+                        p.buy
+                          ? BigInt(fresh.cost) > BigInt(p.limit)
+                          : BigInt(fresh.cost) < BigInt(p.limit)
+                      )
+                        throw new Error(
+                          "Price moved beyond strategy limits. Evaluate it again.",
+                        );
+                      setYes(p.yes);
+                      setBuy(p.buy);
+                      setQuantity(quantity);
+                      setSlippage(0);
+                      setQuote(fresh);
+                    })
+                  }
+                >
+                  Review strategy quote
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </details>
       <div className="mt-2 flex gap-2">
         <input
           aria-label="Deposit amount"
@@ -729,9 +815,9 @@ function PositionsContent() {
     try {
       const conf = await api<AppConfig>("config");
       validateConfig(conf);
-      if (SOLANA_CLUSTER !== "localnet")
+      if (SOLANA_CLUSTER !== conf.cluster)
         throw new Error(
-          "Set NEXT_PUBLIC_SOLANA_CLUSTER=localnet and the local RPC, then restart Fork.",
+          `The app is configured for ${SOLANA_CLUSTER}, but the service uses ${conf.cluster}. Use matching network settings and restart Fork.`,
         );
       const all = await api<MarketDescriptor[]>("markets");
       setConfig(conf);
@@ -773,9 +859,9 @@ function PositionsContent() {
   return (
     <>
       <p className="mt-2 text-[10.5px] leading-relaxed text-ink-3">
-        Trade B conditional on exact A=YES with local mock funds. This pair is
-        separate from the Verse’s full assumption basket. Gemini supplies
-        metadata and outcomes; trades execute on Solana.
+        Trade B conditional on exact A=YES with test collateral on{" "}
+        {SOLANA_CLUSTER}. This pair is separate from the Verse’s full assumption
+        basket. Gemini supplies metadata and outcomes; trades execute on Solana.
       </p>
       {error && (
         <p className="mt-2 text-down" role="alert">
@@ -788,7 +874,7 @@ function PositionsContent() {
           disabled={busy}
           onClick={() => void connect()}
         >
-          {busy ? "Connecting…" : "Retry local service"}
+          {busy ? "Connecting…" : "Retry Solana service"}
         </button>
       ) : (
         <>
@@ -900,7 +986,7 @@ export function Positions() {
       >
         <span className="text-ink-2">FORK Positions</span>
         <span className="tag tag-custom">
-          {open ? "close" : "local Solana"}
+          {open ? "close" : SOLANA_CLUSTER}
         </span>
       </button>
       {open && <PositionsContent />}

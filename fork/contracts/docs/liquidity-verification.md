@@ -1,7 +1,10 @@
 # Liquidity verification — 2026-11-20
 
-Tests used real compiled SBF code and mock SPL collateral. No production funds or
-devnet transactions were submitted. Public devnet read checks returned genesis
+This report records the original local-validator verification. Subsequent public
+devnet deployment and application verification are recorded in
+[devnet-deployment.json](devnet-deployment.json) and [the app guide](../../docs/devnet.md).
+These original tests used real compiled SBF code and mock SPL collateral. No production funds or
+devnet transactions were submitted during that original run. Public devnet read checks returned genesis
 `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`; deployment is not inferred from
 that connectivity check.
 

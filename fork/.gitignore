@@ -45,6 +45,8 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 .next-prod/
+.next-devnet/
+.next-devnet-prod/
 
 # Generated from fork-contracts (npm run app:sync)
 /src/lib/contracts/generated/

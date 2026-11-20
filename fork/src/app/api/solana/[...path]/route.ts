@@ -8,10 +8,11 @@ async function proxy(
   context: { params: Promise<{ path: string[] }> },
 ) {
   try {
-    const service = process.env.FORK_LOCAL_SERVICE;
+    const service =
+      process.env.FORK_SERVICE_URL ?? process.env.FORK_LOCAL_SERVICE;
     if (!service)
       throw new Error(
-        "Local Solana service is not configured. Follow docs/integration.md.",
+        "Solana service is not configured. Follow docs/devnet.md.",
       );
     const local = new Set(["localhost", "127.0.0.1", "[::1]"]);
     // Next may normalize req.url to localhost even when the browser used 127.0.0.1.
@@ -42,6 +43,7 @@ async function proxy(
         "markets",
         "refresh",
         "faucet",
+        "strategy",
       ].includes(path[0])
     )
       throw new Error("Unknown local endpoint.");

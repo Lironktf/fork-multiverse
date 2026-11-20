@@ -1,0 +1,52 @@
+{
+  "verifiedAt": "2026-11-20",
+  "program": "2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv",
+  "deploymentSignature": "2Ku1rKWHp4ZYtRG9swmCjmLaRnefPkUTMRRaFj6C99gY45BnUmznALaMT8zHMZUuBDEpyHfk12i7jrEpU4ypU2Br",
+  "binarySha256": "e9a0b1f54859c785e8f56e06480f65b44163769e1da08fe4e817af6ac80dbc4c",
+  "application": {
+    "cluster": "devnet",
+    "rpc": "https://api.devnet.solana.com",
+    "genesis": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+    "program": "2Hfano51aQbCLFE5mf348CXRb4YEzpnqvow7ucCV6Lyv",
+    "config": "HBz8xvAee8tkAHSQPCtAyaSF7Skn8USaznR966vrGWkL",
+    "mint": "HhmR5iKRKGYrgEB4swyyw6jGKGro71H7WoMfTA9gGysg",
+    "idlHash": "af484c3bcfe2e5d5d058c0046a79b7c39bfe649b4492059756dcea5ea2010b42",
+    "markets": [
+      {
+        "address": "FhwpcM5Ut66ctvMJ6LQVkfcfDUfrVz1zoRG2Nim43Kwd",
+        "parent": "6qqex3873qViv7UXZ7iVYWQgTNMbA9WKm31mhCP6GbtD",
+        "target": "5Mvda63jYNpjxotr2kdV4b2iXnffMHoenK16sHrbBfE2",
+        "vault": "69feMjefVyra3LduE6EXZyrvub4GBtiQR4EsAE4pM9fV",
+        "bindings": [
+          {
+            "ticker": "BRENT2611272200",
+            "instrument": "GEMI-BRENT2611272200-HI90",
+            "closeTs": 1795816200,
+            "observationTs": 1795816800,
+            "termsHash": "e117d7654b9409304544bfb9cf9c00d172048c24ddb4830e0527d252b6b6ce65"
+          },
+          {
+            "ticker": "COPPER2611272200",
+            "instrument": "GEMI-COPPER2611272200-HI5D58",
+            "closeTs": 1795816200,
+            "observationTs": 1795816800,
+            "termsHash": "f5915044cc86da4a79204d634852495752c25d11441bd9148687f7b84f1105c3"
+          }
+        ]
+      }
+    ]
+  },
+  "browser": [
+    {
+      "cluster": "devnet",
+      "market": "FhwpcM5Ut66ctvMJ6LQVkfcfDUfrVz1zoRG2Nim43Kwd",
+      "owner": "7mK8zAueBawgtEMp7yrdRDtrugi2oNtSs7BJT23FgTQ2",
+      "fundingSignature": "4udg5BidjZSG9udLLq33C9wUehUh2Xb7G2N8ropdYqZrvARPVcjKqyTBE79n3uZHFXNTechf4kjuhdBDXVsyLYTK",
+      "signatures": [
+        "3JakLpYhD65oqyFRWFGMNoUAQkJJociQHbkjMVA77V1roC99tah9etFuXriZZasnmy4KRhdKDG3EGz5UMPMp3sSH",
+        "12fiacMBkmGGkyogbHw3RfDgXPP8qAjFTfL1QxeXznEYn9cDrnmCaA4kedJabengJDWCxUELLq8qunKLktVY3qg",
+        "XQiEfDyF4mpCLgx6a1XHaXkZRhQcAZw5CU1Fgj8WJ1CZuSAeiA77hzV7cumZN9e3QKfAuVc58okMn4RJPgGiK4P"
+      ]
+    }
+  ]
+}
