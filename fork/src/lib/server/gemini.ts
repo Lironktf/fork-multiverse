@@ -25,19 +25,29 @@ const TTL_MS = 90_000;
 const MIN_GAP_MS = 1_000;
 
 type Cached = { at: number; value: unknown };
-const cache = new Map<string, Cached>();
-const inflight = new Map<string, Promise<unknown>>();
-let gate: Promise<void> = Promise.resolve();
-let lastCall = 0;
+// One cache per server process, shared by every bundle that imports this module
+// (route handlers and instrumentation.ts are bundled separately, so a module-level
+// Map would not be shared and the start-up pre-load would warm nothing).
+const g = globalThis as typeof globalThis & {
+  __forkGeminiCache?: Map<string, Cached>;
+  __forkGeminiInflight?: Map<string, Promise<unknown>>;
+};
+const cache = (g.__forkGeminiCache ??= new Map<string, Cached>());
+const inflight = (g.__forkGeminiInflight ??= new Map<string, Promise<unknown>>());
+// the 1 request/second gate is process-wide for the same reason as the cache
+const gate = ((g as { __forkGeminiGate?: { p: Promise<void>; last: number } }).__forkGeminiGate ??= {
+  p: Promise.resolve(),
+  last: 0,
+});
 
 async function throttle() {
-  const prev = gate;
+  const prev = gate.p;
   let release!: () => void;
-  gate = new Promise((r) => (release = r));
+  gate.p = new Promise((r) => (release = r));
   await prev;
-  const wait = Math.max(0, lastCall + MIN_GAP_MS - Date.now());
+  const wait = Math.max(0, gate.last + MIN_GAP_MS - Date.now());
   if (wait) await new Promise((r) => setTimeout(r, wait));
-  lastCall = Date.now();
+  gate.last = Date.now();
   release();
 }
 
