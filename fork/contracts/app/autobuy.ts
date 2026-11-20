@@ -50,6 +50,8 @@ export interface AutoBuyRule {
   createdAt: string;
   /** auto-trader account that holds the position (not the user's wallet) */
   executor: string;
+  /** human labels from the app, e.g. "BTC above $62k? · YES" (display only) */
+  labels?: { condition: string; target: string };
   last?: Observation;
   firedAt?: string;
   fired?: Observation;
@@ -68,6 +70,7 @@ export function parseRuleInput(input: unknown): {
   market: string;
   trigger: Trigger;
   action: AutoBuyAction;
+  labels?: { condition: string; target: string };
 } {
   const v = (input ?? {}) as Record<string, unknown>;
   const t = (v.trigger ?? {}) as Record<string, unknown>;
@@ -98,7 +101,12 @@ export function parseRuleInput(input: unknown): {
   if (!Number.isFinite(maxCost) || maxCost <= 0 || maxCost > MAX_COST)
     throw new Error(`Max cost must be above 0 and at most ${MAX_COST}.`);
   if (maxCost > shares) throw new Error("Max cost above the share count can never be worth paying (each share pays at most 1).");
-  return { market: v.market, trigger, action: { side, shares, maxCost } };
+  const l = v.labels as Record<string, unknown> | undefined;
+  const labels =
+    l && typeof l.condition === "string" && typeof l.target === "string"
+      ? { condition: l.condition.slice(0, 160), target: l.target.slice(0, 160) }
+      : undefined;
+  return { market: v.market, trigger, action: { side, shares, maxCost }, ...(labels ? { labels } : {}) };
 }
 
 const num = (x: unknown) => {
@@ -140,3 +148,33 @@ export function describeTrigger(t: Trigger): string {
     ? `${t.symbol.toUpperCase()} spot ${op} $${t.value.toLocaleString()}`
     : `${t.instrument} ${op} ${(t.value * 100).toFixed(0)}%`;
 }
+
+/**
+ * Map an app outcome on a Gemini event to the exact contract and side.
+ * Binary events: outcomes YES/NO on the single contract. Categorical: each outcome
+ * label is its own contract, held on its YES side. (Same mapping as the app's
+ * gemini-normalize.ts.)
+ */
+export function resolveOutcome(
+  raw: unknown,
+  outcome: string,
+): { instrument: string; yes: boolean } {
+  const e = (raw ?? {}) as {
+    type?: string;
+    contracts?: { instrumentSymbol?: string; label?: string; status?: string }[];
+  };
+  const live = (e.contracts ?? []).filter(
+    (c) => c.status !== "settled" && c.status !== "invalid" && c.instrumentSymbol,
+  );
+  if (!live.length) throw new Error("This Gemini event has no open contract.");
+  if (e.type === "binary" || live.length === 1) {
+    if (outcome !== "YES" && outcome !== "NO") throw new Error(`Unknown outcome ${outcome}.`);
+    return { instrument: live[0]!.instrumentSymbol!, yes: outcome === "YES" };
+  }
+  const c = live.find((x) => x.label === outcome);
+  if (!c) throw new Error(`Outcome “${outcome}” is not an open contract on this event.`);
+  return { instrument: c.instrumentSymbol!, yes: true };
+}
+
+/** ASSUMPTION: stop trading 1h before the earliest observation, so no trade can see the result. */
+export const CLOSE_BUFFER_S = 3600;

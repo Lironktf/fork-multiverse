@@ -41,6 +41,8 @@ import {
   crosses,
   describeTrigger,
   parseRuleInput,
+  resolveOutcome,
+  CLOSE_BUFFER_S,
   spotObservation,
   type AutoBuyRule,
   type Observation,
@@ -664,6 +666,57 @@ async function createRule(input: unknown) {
   log("auto-buy-armed", { ...rule, label: describeTrigger(rule.trigger) });
   return rule;
 }
+/**
+ * One-step rule from the app: "if A happens, buy B". A and B arrive as the world's
+ * (ticker, outcome) pairs; this resolves the exact contracts, registers the B|A=YES
+ * market if needed (close = 1h before the earliest observation, or the immutable
+ * close already registered), escrows and arms a trigger on A's odds.
+ */
+async function quickRule(body: Record<string, unknown>) {
+  const cond = body.condition as { ticker?: string; outcome?: string };
+  const tgt = body.target as { ticker?: string; outcome?: string };
+  const tickerOk = (t?: string) => !!t && /^[A-Za-z0-9._-]{1,64}$/.test(t);
+  if (!tickerOk(cond?.ticker) || !tickerOk(tgt?.ticker) || !cond.outcome || !tgt.outcome)
+    throw new Error("Both A and B must be live Gemini outcomes.");
+  const a = resolveOutcome(await fetchEvent(cond.ticker!, sourceFetch), cond.outcome);
+  if (!a.yes)
+    throw new Error(
+      "A must be a YES outcome: these markets only support “B given A = YES”.",
+    );
+  const b = resolveOutcome(await fetchEvent(tgt.ticker!, sourceFetch), tgt.outcome);
+  if (a.instrument === b.instrument)
+    throw new Error("A and B are the same contract.");
+  const ia = await inspect(cond.ticker!, a.instrument);
+  const ib = await inspect(tgt.ticker!, b.instrument);
+  for (const i of [ia, ib])
+    if (i.status !== "active" || i.marketState === "closed")
+      throw new Error(`${i.instrument} is not open for trading on Gemini.`);
+  const earliest =
+    Math.min(timestamp(ia.expiry), timestamp(ib.expiry)) - CLOSE_BUFFER_S;
+  const closeFor = (i: Instrument) =>
+    new Date((i.closeTs ?? earliest) * 1000).toISOString();
+  const market = await prepare({
+    parent: { ticker: cond.ticker, instrument: a.instrument, termsHash: ia.termsHash, close: closeFor(ia), reviewed: true },
+    target: { ticker: tgt.ticker, instrument: b.instrument, termsHash: ib.termsHash, close: closeFor(ib), reviewed: true },
+  });
+  const against = body.against === true;
+  return createRule({
+    market: market.address,
+    trigger: {
+      kind: "contract",
+      ticker: cond.ticker,
+      instrument: a.instrument,
+      op: ">=",
+      value: Number(body.threshold),
+    },
+    action: {
+      side: b.yes !== against ? "yes" : "no",
+      shares: body.shares,
+      maxCost: body.maxCost,
+    },
+    labels: body.labels,
+  });
+}
 function cancelRule(id: unknown) {
   const rule = rules.find((r) => r.id === id);
   if (!rule) throw new Error("Unknown rule.");
@@ -814,7 +867,9 @@ createServer(async (req, res) => {
       data = await serial(() =>
         body.op === "cancel"
           ? Promise.resolve(cancelRule(body.id))
-          : createRule(body),
+          : body.op === "quick"
+            ? quickRule(body)
+            : createRule(body),
       );
     else if (req.method === "POST" && url.pathname === "/faucet")
       data = await serial(() => faucet(String(body.owner)));
