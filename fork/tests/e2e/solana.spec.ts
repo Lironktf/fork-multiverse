@@ -21,6 +21,10 @@ test("live Gemini → real local-validator trading in the original Fork UI", asy
     process.env.RUN_SOLANA_E2E !== "1",
     "Opt in with reviewed live instruments and UTC closes; uses local mock funds only.",
   );
+  // STALE since PR #3 replaced the mock faucet ("Get test USDC + SOL") with native SOL
+  // deposits; fails on PR #3's own branch too. Native-SOL wallet flows are covered by
+  // sol-native.spec.ts and redemption.spec.ts. TODO(Ethan): port to native SOL.
+  test.skip(true, "Uses the removed mock-collateral faucet; see comment above.");
   test.setTimeout(300_000);
   const parentSymbol = process.env.FORK_TEST_PARENT!;
   const targetSymbol = process.env.FORK_TEST_TARGET!;

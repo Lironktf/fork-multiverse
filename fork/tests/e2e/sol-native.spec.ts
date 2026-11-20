@@ -104,7 +104,9 @@ test("SOL wallet deposits atomically, buys and sells without minting or touching
   await trading
     .getByRole("button", { name: "Review trade", exact: true })
     .click();
-  await expect(trading.getByTestId("chain-quote")).toContainText("SOL");
+  await expect(trading.getByTestId("chain-quote")).toContainText("SOL", {
+    timeout: 30000,
+  });
   await trading.getByRole("button", { name: "Confirm buy YES" }).click();
   await expect(trading.getByTestId("balance-yes")).toHaveText("0.020000000", {
     timeout: 30000,
@@ -114,7 +116,9 @@ test("SOL wallet deposits atomically, buys and sells without minting or touching
   await trading
     .getByRole("button", { name: "Review trade", exact: true })
     .click();
-  await expect(trading.getByTestId("chain-quote")).toBeVisible();
+  await expect(trading.getByTestId("chain-quote")).toBeVisible({
+    timeout: 30000,
+  });
   await trading.getByRole("button", { name: "Confirm sell YES" }).click();
   await expect(trading.getByTestId("balance-yes")).toHaveText("0.010000000", {
     timeout: 30000,

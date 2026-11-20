@@ -15,6 +15,10 @@ test("wallet popover follows confirmed local SOL funding without reconnecting", 
     process.env.RUN_SOLANA_E2E !== "1",
     "Requires the local mock service and an existing conditional market.",
   );
+  // STALE since PR #3 replaced the mock faucet ("Get test USDC + SOL") with native SOL
+  // deposits; fails on PR #3's own branch too. Native-SOL wallet flows are covered by
+  // sol-native.spec.ts and redemption.spec.ts. TODO(Ethan): port to native SOL.
+  test.skip(true, "Uses the removed mock-collateral faucet; see comment above.");
   const config = (await (await request.get("/api/sol/config")).json())
     .data as AppConfig;
   const markets = (await (await request.get("/api/sol/markets")).json())
