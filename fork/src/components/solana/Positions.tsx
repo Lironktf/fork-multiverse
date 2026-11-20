@@ -19,6 +19,7 @@ import type {
 } from "@/lib/contracts/generated/app-types";
 import { explorerTx, SOLANA_CLUSTER } from "./SolanaProvider";
 import { short } from "./WalletButton";
+import { AutoBuy } from "./AutoBuy";
 
 const field =
   "w-full min-w-0 rounded-md border border-line bg-black/20 px-2 py-1.5 text-[11px] text-ink outline-none focus:border-accent/50";
@@ -775,6 +776,7 @@ function PositionsContent() {
               market={market}
             />
           )}
+          {market && !creating && <AutoBuy market={market} />}
         </>
       )}
     </>

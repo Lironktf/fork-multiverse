@@ -36,6 +36,15 @@ import {
   timestamp,
   type Outcome,
 } from "../oracle/gemini.js";
+import {
+  contractObservation,
+  crosses,
+  describeTrigger,
+  parseRuleInput,
+  spotObservation,
+  type AutoBuyRule,
+  type Observation,
+} from "./autobuy.js";
 import type {
   AppConfig,
   Instrument,
@@ -544,6 +553,192 @@ async function faucet(ownerText: string) {
   log("faucet", { owner: ownerText, signatures });
   return { signatures };
 }
+// ---------------------------------------------------------------------------
+// Auto-buy rules. A browser wallet cannot sign while its owner is away, so rules
+// execute from a dedicated auto-trader keypair held by this service (mock funds
+// only, never the user's wallet). Each rule escrows its max cost into the
+// auto-trader's position in that market when armed, and fires at most once.
+const rulesPath = join(directory, "autobuy.json");
+const executorPath =
+  process.env.FORK_AUTOBUYER_KEYPAIR ?? join(directory, "autobuyer.keypair.json");
+const executor = existsSync(executorPath)
+  ? Keypair.fromSecretKey(
+      Uint8Array.from(JSON.parse(readFileSync(executorPath, "utf8"))),
+    )
+  : Keypair.generate();
+if (!existsSync(executorPath))
+  writeFileSync(executorPath, JSON.stringify([...executor.secretKey]), {
+    mode: 0o600,
+  });
+let rules: AutoBuyRule[] = existsSync(rulesPath)
+  ? JSON.parse(readFileSync(rulesPath, "utf8"))
+  : [];
+const saveRules = () =>
+  writeFileSync(rulesPath, JSON.stringify(rules, null, 2));
+function traderAccounts(m: MarketDescriptor) {
+  const market = new PublicKey(m.address);
+  return {
+    owner: executor.publicKey,
+    config,
+    market,
+    parent: new PublicKey(m.parent),
+    target: new PublicKey(m.target),
+    trader: pda("trader", market, executor.publicKey),
+  };
+}
+async function escrowForRule(m: MarketDescriptor, maxCost: number) {
+  // rent for the auto-trader's position account (fees are paid by admin)
+  if ((await connection.getBalance(executor.publicKey)) < 10_000_000) {
+    if (local) {
+      const sig = await connection.requestAirdrop(
+        executor.publicKey,
+        1_000_000_000,
+      );
+      await connection.confirmTransaction(sig, "confirmed");
+    } else
+      await transact(
+        "auto-trader rent",
+        SystemProgram.transfer({
+          fromPubkey: admin.publicKey,
+          toPubkey: executor.publicKey,
+          lamports: 20_000_000,
+        }),
+      );
+  }
+  const amount = BigInt(Math.round(maxCost * 1_000_000));
+  const ata = await getOrCreateAssociatedTokenAccount(
+    connection,
+    admin,
+    mint,
+    executor.publicKey,
+  );
+  await mintTo(connection, admin, mint, ata.address, admin, amount);
+  const acc = traderAccounts(m);
+  const ixs = [];
+  if (!(await program.account.trader.fetchNullable(acc.trader)))
+    ixs.push(
+      await program.methods
+        .openTrader()
+        .accountsStrict({
+          owner: executor.publicKey,
+          market: acc.market,
+          trader: acc.trader,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction(),
+    );
+  ixs.push(
+    await program.methods
+      .deposit(new BN(amount.toString()))
+      .accountsStrict({
+        ...acc,
+        mint,
+        vault: new PublicKey(m.vault),
+        userToken: ata.address,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction(),
+  );
+  const signature = await send(ixs, [executor]);
+  log("transaction", { label: "auto-buy escrow", signature });
+  return signature;
+}
+async function createRule(input: unknown) {
+  const parsed = parseRuleInput(input);
+  const m = descriptor(parsed.market);
+  const closeTs = Math.min(...m.bindings.map((b) => b.closeTs));
+  if (closeTs <= Math.floor(Date.now() / 1000))
+    throw new Error("This market's trading close has passed.");
+  if (rules.filter((r) => r.status === "armed").length >= 20)
+    throw new Error("At most 20 armed auto-buy rules.");
+  await escrowForRule(m, parsed.action.maxCost);
+  const rule: AutoBuyRule = {
+    id: randomUUID(),
+    ...parsed,
+    status: "armed",
+    createdAt: new Date().toISOString(),
+    executor: executor.publicKey.toBase58(),
+  };
+  rules.unshift(rule);
+  saveRules();
+  log("auto-buy-armed", { ...rule, label: describeTrigger(rule.trigger) });
+  return rule;
+}
+function cancelRule(id: unknown) {
+  const rule = rules.find((r) => r.id === id);
+  if (!rule) throw new Error("Unknown rule.");
+  if (rule.status !== "armed") throw new Error(`Rule is already ${rule.status}.`);
+  rule.status = "cancelled";
+  saveRules();
+  log("auto-buy-cancelled", { id });
+  return rule;
+}
+async function observe(rule: AutoBuyRule): Promise<Observation | null> {
+  const t = rule.trigger;
+  if (t.kind === "spot") {
+    const r = await sourceFetch(
+      `https://api.gemini.com/v1/pubticker/${encodeURIComponent(t.symbol)}`,
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    if (!r.ok) throw new Error(`Gemini ticker HTTP ${r.status}`);
+    return spotObservation(await r.json());
+  }
+  return contractObservation(
+    await fetchEvent(t.ticker, sourceFetch),
+    t.instrument,
+  );
+}
+async function fire(rule: AutoBuyRule, o: Observation) {
+  const m = descriptor(rule.market);
+  rule.firedAt = new Date().toISOString();
+  rule.fired = o;
+  try {
+    await refresh(m); // materialize lifecycle first; trading may have closed
+    const limit = new BN(Math.round(rule.action.maxCost * 1_000_000));
+    const signature = await send(
+      [
+        await program.methods
+          .trade(
+            rule.action.side === "yes",
+            true,
+            units(rule.action.shares),
+            limit,
+          )
+          .accountsStrict(traderAccounts(m))
+          .instruction(),
+      ],
+      [executor],
+    );
+    rule.status = "fired";
+    rule.signature = signature;
+    log("auto-buy-fired", { id: rule.id, observation: o, signature });
+  } catch (error) {
+    rule.status = "failed";
+    rule.error = String((error as Error).message ?? error).slice(0, 400);
+    log("auto-buy-failed", { id: rule.id, observation: o, error: rule.error });
+  }
+  saveRules();
+}
+async function checkRules() {
+  const now = Math.floor(Date.now() / 1000);
+  for (const rule of rules.filter((r) => r.status === "armed")) {
+    const m = markets.find((x) => x.address === rule.market);
+    if (!m || Math.min(...m.bindings.map((b) => b.closeTs)) <= now) {
+      rule.status = "expired";
+      saveRules();
+      continue;
+    }
+    try {
+      const o = await observe(rule);
+      if (o) rule.last = o;
+      if (crosses(rule.trigger, o)) await fire(rule, o!);
+    } catch (error) {
+      log("auto-buy-observe-error", { id: rule.id, error: String(error) });
+    }
+  }
+  saveRules();
+}
+
 await initialize();
 // Serialize privileged operations and polling to avoid duplicate registration/report races.
 let queue: Promise<unknown> = Promise.resolve();
@@ -613,6 +808,14 @@ createServer(async (req, res) => {
       );
     else if (req.method === "POST" && url.pathname === "/refresh")
       data = await serial(() => refresh(descriptor(body.market)));
+    else if (req.method === "GET" && url.pathname === "/rules")
+      data = { executor: executor.publicKey.toBase58(), rules };
+    else if (req.method === "POST" && url.pathname === "/rules")
+      data = await serial(() =>
+        body.op === "cancel"
+          ? Promise.resolve(cancelRule(body.id))
+          : createRule(body),
+      );
     else if (req.method === "POST" && url.pathname === "/faucet")
       data = await serial(() => faucet(String(body.owner)));
     else {
@@ -645,3 +848,11 @@ setInterval(() => {
     polling = false;
   });
 }, 30_000).unref();
+
+// Auto-buy watcher: every 15s, through the same serialized queue and 1 req/s Gemini gate.
+setInterval(() => {
+  if (!rules.some((r) => r.status === "armed")) return;
+  void serial(checkRules).catch((e) =>
+    log("auto-buy-loop-error", { error: String(e) }),
+  );
+}, Number(process.env.FORK_AUTOBUY_INTERVAL_MS ?? 15_000)).unref();

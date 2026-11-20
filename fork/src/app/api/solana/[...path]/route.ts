@@ -48,6 +48,7 @@ async function proxy(
         "markets",
         "refresh",
         "faucet",
+        "rules",
       ].includes(path[0])
     )
       throw new Error("Unknown local endpoint.");
